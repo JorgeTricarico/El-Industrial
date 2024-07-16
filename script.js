@@ -61,9 +61,13 @@ document.addEventListener("DOMContentLoaded", () => {
       row.innerHTML = `
         <td data-label="Producto">${product.producto}</td>
         <td data-label="Detalle">${product.detalle}</td>
-        <td data-label="Marca">${product.marca}</td>
-        <td data-label="Un/Mts">${product.unidad == "UN" ? "Un" : "Mts"}</td>
-        <td data-label="Precio">${product.moneda + " " + product.precio}</td>
+        <td data-label="Marca" style="text-align:center">${product.marca}</td>
+        <td data-label="Un/Mts" style="text-align:center">${
+          product.unidad == "UN" ? "Uni" : "Mts"
+        }</td>
+        <td data-label="Precio" style="text-align:center">${
+          product.moneda + " " + product.precio
+        }</td>
         `;
       productTable.appendChild(row);
     });
