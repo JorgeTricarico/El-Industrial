@@ -3,7 +3,7 @@ body {
   margin: 25px;
   background-color: #fafafa;
 }
-
+/* 
 h1 img {
   width: 40px;
 }
@@ -14,10 +14,10 @@ h1 {
   font-family: monospace;
   font-size: 2.5rem;
   font-weight: bolder;
-}
+} */
 
 #searchInput {
-  margin: 10px auto;
+  margin: 20px auto;
   padding: 10px 20px;
   width: calc(100% - 42px);
   box-sizing: border-box;
