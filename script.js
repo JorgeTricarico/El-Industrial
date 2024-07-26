@@ -3,7 +3,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const searchInput = document.getElementById("searchInput");
   const loader = document.getElementById("loader");
   //IMPORTANTE CAMBIAR SI SE SUBE UN NUEVO JSON ↓
-  const currentJsonFileName = "ListaPrecio2 10-07-24_json_compres.gz";
+  const currentJsonFileName = "ListaPrecio 25-07-24_json_compres.gz";
   //IMPORTANTE CAMBIAR SI SE SUBE UN NUEVO JSON ↑
   const themeToggle = document.getElementById("themeToggle");
 
