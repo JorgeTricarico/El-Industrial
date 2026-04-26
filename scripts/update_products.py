@@ -137,6 +137,8 @@ if __name__ == "__main__":
     
     filename = f"lista_precio_{datetime.now().strftime('%y-%m-%d')}_json_compres.gz"
     rel_path = os.path.join("data", filename)
-    with gzip.open(os.path.join(BASE_DIR, rel_path), "wt", encoding="utf-8") as f: 
-        json.dump(new_items, f, indent=2, ensure_ascii=False)
-    with open(LATEST_INDEX_FILE, "w") as f: f.write(rel_path)
+    
+    if "--silent" not in sys.argv:
+        with gzip.open(os.path.join(BASE_DIR, rel_path), "wt", encoding="utf-8") as f: 
+            json.dump(new_items, f, indent=2, ensure_ascii=False)
+        with open(LATEST_INDEX_FILE, "w") as f: f.write(rel_path)

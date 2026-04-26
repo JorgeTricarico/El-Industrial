@@ -17,8 +17,9 @@ Esto permite conectarse remotamente a ella por SSH en cualquier lugar del mundo 
 La automatización se rige por las tareas programadas (Crontab) del usuario `jorge` dentro de la Raspberry Pi:
 
 - **Ruta del Proyecto en la Pi:** `/home/jorge/El-Industrial/`
-- **Ejecución Diaria:** Existe una entrada en `crontab -l` que detona el script `/home/jorge/El-Industrial/scripts/run_daily.sh` todos los días a las **20:00**.
-- **Logs del Cron:** Toda salida de errores o de éxito cuando el servidor levanta los precios se guarda en `/home/jorge/El-Industrial/reports/cron_log.txt`.
+- **Ejecución Diaria:** Existe una entrada en `crontab -l` que detona el script `/home/jorge/El-Industrial/scripts/run_daily.sh` todos los días a las **20:00**. Este script ahora incluye la generación de un **Reporte Ejecutivo Nocturno** vía IA (Gemini).
+- **Ingesta de Alta Frecuencia:** Se ha implementado `scripts/run_frequent.sh` para ejecuciones silenciosas (telemetría) que pueden programarse cada 1-2 horas para capturar cambios sin saturar el historial de versiones ni los reportes de Telegram.
+- **Logs del Cron:** Toda salida de errores o de éxito cuando el servidor levanta los precios se guarda en `/home/jorge/El-Industrial/reports/cron_log.txt` (diario) y `reports/cron_frequent_log.txt` (frecuente).
 
 ### 🐍 Entorno de Python
 El entorno virtual está alojado en `/home/jorge/El-Industrial/venv`.

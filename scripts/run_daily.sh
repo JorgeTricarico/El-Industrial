@@ -56,6 +56,9 @@ if [ $PY_EXIT_CODE -ne 0 ]; then
     exit 1
 fi
 
+log_message "Ejecutando reporte ejecutivo nocturno..."
+python3 "$SCRIPT_DIR/nightly_report.py"
+
 # --- Gestión de Git (con Reintentos) ---
 log_message "Procesando cambios en Git..."
 

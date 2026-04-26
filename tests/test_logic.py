@@ -10,6 +10,8 @@ class TestPriceLogic(unittest.TestCase):
     def test_calculate_price(self):
         # IVA=0.21, MARKUP=0.30 (segun config tipica)
         # 100 * 1.21 * 1.30 = 157.3
+        import update_products
+        update_products.config.update({"iva": 0.21, "markup": 0.30})
         res = calculate_price(100)
         self.assertGreater(res, 100)
         self.assertIsInstance(res, float)

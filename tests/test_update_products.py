@@ -1,18 +1,15 @@
 import pytest
 from unittest.mock import patch, MagicMock
 import os
+import sys
 import json
-import update_products
 
-# Seteamos una configuración fija para los tests
-update_products.config = {
-    "markup": 0.50,
-    "iva": 0.21,
-    "resale_discount": 0.20
-}
+sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'scripts'))
+import update_products
 
 def test_calculate_price():
     """Verifica que el cálculo de IVA y Markup sea exacto."""
+    update_products.config.update({"markup": 0.50, "iva": 0.21, "resale_discount": 0.20})
     neto = 100
     # Cálculo esperado: 100 * 1.21 * 1.50 = 181.5
     assert update_products.calculate_price(neto) == 181.5
@@ -22,6 +19,7 @@ def test_security_invariant_no_discounts():
     TEST DE SEGURIDAD (CRÍTICO): Garantiza que NUNCA se aplique un descuento
     al precio de lista en la transformación de items.
     """
+    update_products.config.update({"markup": 0.50, "iva": 0.21, "resale_discount": 0.20})
     item_bruto = {
         "Precio": 1000, 
         "Articulo_Corto": "GUARD-01", 
