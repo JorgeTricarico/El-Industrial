@@ -10,16 +10,19 @@ cd $PROYECTO
 # 1. Validación de Sintaxis
 python3 -m py_compile scripts/update_products.py || { $PROYECTO/scripts/notify.sh "🚨 FALLO: Error de sintaxis en el script."; exit 1; }
 
-# 2. Generar Datos
+# 2. Sincronizar
+git pull origin master >> $LOG 2>&1
+
+# 3. Generar Datos
 ./venv/bin/python scripts/update_products.py >> $LOG 2>&1 || { $PROYECTO/scripts/notify.sh "🚨 FALLO: Error en generación de datos."; exit 1; }
 
-# 3. DESPLIEGUE A PRODUCCIÓN (Tu Repo - Rama master)
+# 4. DESPLIEGUE A PRODUCCIÓN (Tu Repo)
 git add .
 git commit -m "prod: update precios ${FECHA} [skip ci]" >> $LOG 2>&1
-echo "Subiendo cambios a Producción (Jorge Master)..." >> $LOG
-git push personal master:master --force >> $LOG 2>&1
+echo "Subiendo cambios a Producción (Jorge Repo)..." >> $LOG
+git push origin master:master >> $LOG 2>&1
 
-# 4. SMOKE TEST (Validación Real)
+# 5. SMOKE TEST (Validación Real)
 echo "Esperando despliegue de Netlify..." >> $LOG
 sleep 30 
 STATUS_CODE=$(curl -o /dev/null -s -w "%{http_code}" "$URL_PROD/latest-json-filename.json")

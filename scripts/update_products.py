@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import json, gzip, os, time, sys
+import glob
 from datetime import datetime
 from dotenv import load_dotenv
 
@@ -61,3 +62,15 @@ if __name__ == '__main__':
     
     with open(LATEST_INDEX_FILE, 'w') as f: f.write(fn)
     with open(LATEST_INDEX_FILE_JSON, 'w') as f: json.dump({'filename': fn}, f)
+
+# --- MEJORA DE ROBUSTEZ: LIMPIEZA DE ARCHIVOS VIEJOS ---
+def cleanup_old_files(directory, keep=30):
+    files = glob.glob(os.path.join(directory, 'lista_precio_*.gz'))
+    files.sort(key=os.path.getmtime, reverse=True)
+    for f in files[keep:]:
+        try: os.remove(f)
+        except: pass
+
+if __name__ == '__main__':
+    # ... (al final del script)
+    cleanup_old_files(DATA_DIR)
