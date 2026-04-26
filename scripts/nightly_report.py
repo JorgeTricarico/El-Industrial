@@ -18,23 +18,53 @@ def get_ai_analysis(accum_data, metrics_data):
     if not GEMINI_API_KEY:
         return "ERROR: GEMINI_API_KEY no configurada."
     
-    # We use a known working model
+    # --- Lógica de Resumen y Agrupación para evitar exceder límites de tokens ---
+    new_items = list(accum_data.get("new", {}).values())
+    updated_items = list(accum_data.get("updated", {}).values())
+    
+    # Agrupar actualizaciones por marca para ser más concisos
+    brand_groups = {}
+    for item in updated_items:
+        brand = item.get("brand", "Sin Marca")
+        if brand not in brand_groups: brand_groups[brand] = 0
+        brand_groups[brand] += 1
+    
+    # Seleccionar top 10 cambios más significativos (o los primeros si no hay criterio de importancia)
+    sample_updates = updated_items[:15]
+    sample_new = new_items[:10]
+
+    summary_data = {
+        "total_new": len(new_items),
+        "total_updated": len(updated_items),
+        "updates_by_brand": brand_groups,
+        "sample_updates": sample_updates,
+        "sample_new": sample_new,
+        "has_more": len(updated_items) > 15 or len(new_items) > 10
+    }
+
     model_name = "gemini-3.1-flash-lite-preview"
     url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={GEMINI_API_KEY}"
     
     prompt = f"""
 Eres un analista experto para el sistema automatizado de 'El-Industrial'. 
-Analiza los siguientes datos del día y redacta un 'Reporte Ejecutivo Nocturno' breve y conciso, usando listas (bullet points) y formato amigable para Telegram (Markdown limitado).
+Analiza los siguientes datos del día y redacta un 'Reporte Ejecutivo Nocturno' breve y conciso para Telegram.
 
-Debes incluir:
-1. 🤖 **Resumen IA**: Analiza las tendencias de los cambios de precio y destaca los productos clave (los de mayor impacto o variaciones interesantes).
-2. 🕒 **Análisis de Ventana de Carga**: Revisa las métricas y determina a qué horas el proveedor parece realizar sus cargas (busca picos de 'updates' > 0), sugiriendo horarios óptimos para los crons.
+Resumen de Datos del Día:
+- Nuevos Productos: {summary_data['total_new']}
+- Productos Actualizados: {summary_data['total_updated']}
+- Distribución por Marcas: {json.dumps(brand_groups, ensure_ascii=False)}
 
-Datos de Acumulación Diaria (Cambios de Precios):
-{json.dumps(accum_data, ensure_ascii=False)[:3000]} # Limitamos para no sobrecargar el prompt
+Muestra de Cambios (para análisis de tendencia):
+{json.dumps(sample_updates, ensure_ascii=False)}
 
-Datos de Métricas (jsonl):
-{json.dumps(metrics_data, ensure_ascii=False)[:3000]}
+{ "Nota: Hay más cambios que no se incluyen en esta muestra." if summary_data['has_more'] else "" }
+
+Datos de Métricas de Infraestructura:
+{json.dumps(metrics_data, ensure_ascii=False)[:1500]}
+
+Instrucciones:
+1. 🤖 **Resumen IA**: Analiza tendencias (¿subieron todas las marcas? ¿hay un porcentaje común?) y destaca productos clave.
+2. 🕒 **Ventana de Carga**: Identifica a qué horas hubo 'updates' > 0 y sugiere horario para el cron.
 """
 
     payload = {"contents": [{"parts": [{"text": prompt}]}]}
