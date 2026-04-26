@@ -5,7 +5,7 @@ SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 PROJECT_ROOT="$( dirname "$SCRIPT_DIR" )"
 VENV_PATH="$PROJECT_ROOT/venv"
 LOG_FILE="$PROJECT_ROOT/reports/cron_frequent_log.txt"
-LOCK_FILE="/tmp/el_industrial_frequent.lock"
+LOCK_FILE="/tmp/el_industrial.lock"
 HOSTNAME=$(hostname)
 
 # Función para loggear con timestamp

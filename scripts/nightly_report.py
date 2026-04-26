@@ -94,9 +94,39 @@ def analyze_infrastructure(metrics):
             f"- **Ejecuciones Hoy:** {total}\n"
             f"- **Fallos:** {fails}")
 
+def cleanup_old_archives(archive_dir, days=30):
+    """Elimina archivos de archivo con más de N días para ahorrar espacio en la SD."""
+    try:
+        now = time.time()
+        for f in os.listdir(archive_dir):
+            fpath = os.path.join(archive_dir, f)
+            if os.stat(fpath).st_mtime < now - (days * 86400):
+                if os.path.isfile(fpath):
+                    os.remove(fpath)
+                    print(f"Limpieza: eliminado archivo antiguo {f}")
+    except Exception as e:
+        print(f"Error en limpieza: {e}")
+
+def rotate_logs(log_paths, max_lines=1000):
+    """Recorta los archivos de log para que no crezcan infinitamente."""
+    for path in log_paths:
+        if os.path.exists(path):
+            try:
+                with open(path, "r", encoding="utf-8") as f:
+                    lines = f.readlines()
+                if len(lines) > max_lines:
+                    with open(path, "w", encoding="utf-8") as f:
+                        f.writelines(lines[-max_lines:])
+                    print(f"Rotación: log {os.path.basename(path)} recortado.")
+            except Exception as e:
+                print(f"Error rotando log {path}: {e}")
+
 def main():
+    import time
     accum_path = os.path.join(STATUS_DIR, "daily_accum.json")
     metrics_path = os.path.join(STATUS_DIR, "metrics.jsonl")
+    reports_log = os.path.join(BASE_DIR, "reports", "cron_log.txt")
+    frequent_log = os.path.join(BASE_DIR, "reports", "cron_frequent_log.txt")
     
     # Load accum data
     accum_data = {"new": {}, "updated": {}}
@@ -154,6 +184,10 @@ def main():
         os.rename(accum_path, os.path.join(archive_dir, f"daily_accum_{today}.json"))
     if os.path.exists(metrics_path):
         os.rename(metrics_path, os.path.join(archive_dir, f"metrics_{today}.jsonl"))
+
+    # Ejecutar Mantenimiento
+    cleanup_old_archives(archive_dir, days=30)
+    rotate_logs([reports_log, frequent_log])
 
 if __name__ == "__main__":
     main()
