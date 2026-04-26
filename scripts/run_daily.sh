@@ -34,7 +34,7 @@ cd "$PROJECT_ROOT" || exit
 # --- Lógica de Nodo Secundario (Iqual-Mint) ---
 if [[ "$HOSTNAME" == *"mint"* ]]; then
     log_message "Nodo Secundario detectado. Verificando si el Nodo Principal ya cumplió..."
-    URL="https://raw.githubusercontent.com/MiselliMartin/El-Industrial/main/data/lista_precio_${FILE_DATE}_json_compres.gz"
+    URL="https://raw.githubusercontent.com/JorgeTricarico/El-Industrial/main/data/lista_precio_${FILE_DATE}_json_compres.gz"
     if curl --output /dev/null --silent --head --fail "$URL"; then
         log_message "El archivo ya existe en GitHub (Nodo Principal OK). Finalizando sin cambios."
         exit 0
@@ -62,7 +62,7 @@ log_message "Procesando cambios en Git..."
 # Solo si hay cambios reales para commitear
 if [[ -n $(git status -s) ]]; then
     if [ ! -z "$GITHUB_TOKEN" ]; then
-        git remote set-url origin "https://x-access-token:${GITHUB_TOKEN}@github.com/MiselliMartin/El-Industrial.git"
+        git remote set-url origin "https://x-access-token:${GITHUB_TOKEN}@github.com/JorgeTricarico/El-Industrial.git"
     fi
     
     git add .
