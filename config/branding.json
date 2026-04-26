@@ -1,0 +1,13 @@
+{
+  "siteName": "El Industrial",
+  "tagline": "Ferretería Industrial y Bulonera",
+  "logoUrl": "t.png",
+  "faviconUrl": "t.png",
+  "primaryColor": "#212529",
+  "accentColor": "#ffc107",
+  "contactWpp": "5491157551066",
+  "socialLinks": {
+    "whatsapp": "https://wa.me/5491157551066",
+    "web": "https://elindustrial.com.ar"
+  }
+}

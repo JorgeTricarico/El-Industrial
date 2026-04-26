@@ -263,7 +263,27 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
   };
 
+  // Función para cargar la marca (White-Label)
+  const loadBranding = async () => {
+    try {
+      const response = await fetch("config/branding.json");
+      if (response.ok) {
+        const brand = await response.json();
+        document.title = brand.siteName + " - Lista de Precios";
+        if (document.getElementById("brandName")) {
+            document.getElementById("brandName").textContent = brand.siteName;
+        }
+        // Aplicar colores si se desea (opcional)
+        // document.documentElement.style.setProperty('--primary-color', brand.primaryColor);
+        console.log("Marca cargada:", brand.siteName);
+      }
+    } catch (e) {
+      console.log("No se encontró branding personalizado, usando defaults.");
+    }
+  };
+
   // Inicializamos la aplicación
+  await loadBranding();
   await initializeProducts();
   fetchDollarPrice();
   searchInput.focus();
