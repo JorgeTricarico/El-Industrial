@@ -1,0 +1,27 @@
+{
+  "name": "el-industrial",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "directories": {
+    "test": "tests"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/JorgeTricarico/El-Industrial.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "bugs": {
+    "url": "https://github.com/JorgeTricarico/El-Industrial/issues"
+  },
+  "homepage": "https://github.com/JorgeTricarico/El-Industrial#readme",
+  "devDependencies": {
+    "@playwright/test": "^1.59.1"
+  }
+}

@@ -1,47 +1,110 @@
 <!DOCTYPE html>
 <html lang="es">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>El Industrial</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="style.css" />
-    <link rel="shortcut icon" href="tornillo.png" type="image/png" />
-  </head>
-  <body>
-    <!-- <h1>El Indus<img src="t.png" alt="" />rial</h1> -->
-    <button id="themeToggle" class="btnFloat btnToggle">🌙</button>
-    <!-- <input type="text" id="searchInput" placeholder="Buscar productos..." /> -->
-    <div id="searchContainer">
-      <input type="text" id="searchInput" placeholder="Buscar productos..." />
-      <button id="currencyToggle" class="btnCurrency" style="display: none;" title="Convertir Dólares">
-        🔄 AR$
-      </button>
-      <div id="dollarInfo" style="margin-left: auto;">
-        <span>Dolar Hoy</span>
-        <span id="dollarDatee" style="font-size: 0.7em; opacity: 0.7;"></span>
-        <span id="dollarPrice"></span>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>El Industrial - Catálogo</title>
+  
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  
+  <!-- Styles -->
+  <link rel="stylesheet" href="style.css?v=1.2">
+  <link rel="shortcut icon" href="tornillo.png" type="image/png">
+  
+  <!-- Icons (Lucide) -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+</head>
+<body>
+
+  <header>
+    <div class="nav-container">
+      <div class="header-top">
+        <div class="logo">
+          <img src="tornillo.png" alt="Logo">
+          <span id="brandName">El Industrial</span>
+        </div>
+
+        <div class="controls">
+          <div id="dollarInfo" class="dollar-tag">
+            <span class="dollar-label">Dolar Hoy</span>
+            <div class="dollar-data">
+              <span id="dollarPrice">---</span>
+              <span id="dollarDatee" class="dollar-date"></span>
+            </div>
+          </div>
+
+          <button id="currencyToggle" class="btn-icon" title="Cambiar Moneda">
+            <i data-lucide="refresh-cw" style="width: 14px; height: 14px;"></i>
+            <span>Convertir</span>
+          </button>
+
+          <button id="themeToggle" class="btn-icon" title="Cambiar Tema">
+            <i data-lucide="moon" style="width: 14px; height: 14px;"></i>
+          </button>
+        </div>
+      </div>
+
+      <div class="search-wrapper">
+        <i data-lucide="search" class="search-icon"></i>
+        <input type="text" id="searchInput" placeholder="Buscar por producto, marca..." autocomplete="off">
       </div>
     </div>
-    <table id="productTable">
-      <thead>
-        <tr>
-          <th>Producto</th>
-          <th>Detalle</th>
-          <th>Marca</th>
-          <th>U/M</th>
-          <th>Precio</th>
-        </tr>
-        <!-- Articulo Detalle Marca	IVA	Unidad	Dto.	Mon.	P/Lista -->
-      </thead>
-      <tbody></tbody>
-    </table>
-    <div id="loader">
-      Cargando productos... Esto podría demorar un tiempo...
+  </header>
+
+  <main>
+    <div class="table-container">
+      <table id="productTable">
+        <thead>
+          <tr>
+            <th style="width: 25%;">Producto</th>
+            <th style="width: 35%;">Detalle</th>
+            <th style="width: 15%;">Marca</th>
+            <th style="width: 10%;">U/M</th>
+            <th style="width: 15%;">Precio</th>
+          </tr>
+        </thead>
+        <tbody>
+          <!-- Products will be rendered here -->
+        </tbody>
+      </table>
+      
+      <div id="loader">
+        <div style="display: flex; flex-direction: column; align-items: center; gap: 1rem;">
+          <div class="spinner"></div>
+          <span>Sincronizando catálogo...</span>
+        </div>
+      </div>
     </div>
-    <div id="fechaLista"></div>
-    <script src="script.js"></script>
-  </body>
+
+    <div class="status-bar">
+      <span id="fechaLista">Cargando fecha de lista...</span>
+    </div>
+  </main>
+
+  <!-- Scripts -->
+  <script type="module" src="js/main.js?v=1.2"></script>
+  <script>
+    // Initialize icons
+    window.addEventListener('DOMContentLoaded', () => {
+      lucide.createIcons();
+      
+      // Update icon on theme toggle
+      const btn = document.getElementById('themeToggle');
+      if (btn) {
+        btn.addEventListener('click', () => {
+          setTimeout(() => {
+            const isDark = document.body.classList.contains('dark-mode');
+            btn.innerHTML = isDark 
+              ? '<i data-lucide="sun" style="width: 18px; height: 18px;"></i>' 
+              : '<i data-lucide="moon" style="width: 18px; height: 18px;"></i>';
+            lucide.createIcons();
+          }, 50);
+        });
+      }
+    });
+  </script>
+</body>
 </html>
