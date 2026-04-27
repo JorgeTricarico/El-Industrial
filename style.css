@@ -76,23 +76,49 @@ body.dark-mode #themeToggle {
 
 .controls { display: flex; align-items: center; gap: 0.4rem; flex-shrink: 0; }
 
-/* Responsive Header Mobile */
+/* Responsive Header Mobile (DOS LINEAS) */
 @media (max-width: 500px) {
-  header { padding: 0.4rem 0.4rem; }
-  .logo span { font-size: 0.8rem; }
-  .logo img { height: 16px; }
-  .dollar-label { display: block; font-size: 0.45rem; } 
-  #currencyToggle span { display: inline; font-size: 0.6rem; font-weight: 800; } 
-  .btn-icon { padding: 0.3rem 0.4rem; min-width: auto; gap: 0.15rem; }
-  .dollar-tag { padding: 0.2rem 0.3rem; border-radius: 6px; }
-  #dollarPrice { font-size: 0.7rem; }
-  .controls { gap: 0.2rem; }
+  :root { --header-height: 155px; }
+  header { padding: 0.75rem 0.75rem; justify-content: space-between; }
+  
+  .header-top { 
+    flex-direction: column; 
+    align-items: center; 
+    gap: 0.75rem; 
+  }
+
+  .logo { 
+    width: 100%; 
+    justify-content: center; 
+    padding-bottom: 0.4rem;
+    border-bottom: 1px solid var(--border);
+  }
+  .logo span { display: block !important; font-size: 1.25rem; }
+  .logo img { height: 26px; }
+
+  .controls { 
+    width: 100%; 
+    justify-content: space-between; 
+    gap: 0.4rem; 
+  }
+
+  .dollar-tag { flex: 0 1 auto; padding: 0.2rem 0.4rem; }
+  .dollar-label { display: block; font-size: 0.5rem; }
+  #dollarPrice { font-size: 0.85rem; }
+
+  #currencyToggle { flex: 1; justify-content: center; }
+  #currencyToggle span { display: inline; font-size: 0.75rem; font-weight: 800; } 
+  
+  .btn-icon { padding: 0.4rem 0.6rem; height: 36px; border-radius: 12px; }
+  
+  .search-wrapper { margin-top: 0.25rem; }
+  #searchInput { padding: 0.75rem 1rem 0.75rem 2.5rem; font-size: 1rem; border-radius: 14px; }
+  .search-icon { left: 0.9rem; width: 18px; }
 }
 
 @media (max-width: 380px) {
-  .logo span { display: none; } 
-  #currencyToggle span::before { content: ""; } /* Aquí podríamos quitar 'Conv.' si fuera necesario */
-  .header-top { gap: 0.1rem; }
+  .logo span { font-size: 1.1rem; }
+  #currencyToggle span { font-size: 0.65rem; }
 }
 
 .dollar-tag { 
