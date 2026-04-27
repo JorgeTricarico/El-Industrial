@@ -1,3 +1,7 @@
+[build]
+  command = ""
+  publish = "."
+
 [[headers]]
   for = "/*.json"
   [headers.values]
