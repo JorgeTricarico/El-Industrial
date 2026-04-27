@@ -7,10 +7,3 @@
   [headers.values]
     Content-Type = "application/json"
     Access-Control-Allow-Origin = "*"
-
-[[headers]]
-  for = "/*.gz"
-  [headers.values]
-    Content-Type = "application/gzip"
-    Content-Encoding = "gzip"
-    Access-Control-Allow-Origin = "*"
