@@ -111,6 +111,17 @@ body.dark-mode #themeToggle {
   
   .btn-icon { padding: 0.4rem 0.6rem; height: 36px; border-radius: 12px; }
   
+  #themeToggle { 
+    padding: 0.5rem; 
+    min-width: 44px; 
+    height: 44px; 
+    justify-content: center; 
+  }
+  #themeToggle svg { 
+    width: 22px !important; 
+    height: 22px !important; 
+  }
+  
   .search-wrapper { margin-top: 0.25rem; }
   #searchInput { padding: 0.75rem 1rem 0.75rem 2.5rem; font-size: 1rem; border-radius: 14px; }
   .search-icon { left: 0.9rem; width: 18px; }
