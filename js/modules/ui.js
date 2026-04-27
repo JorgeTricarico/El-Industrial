@@ -16,72 +16,104 @@ export const elements = {
     brandName: document.getElementById("brandName")
 };
 
+let allProducts = [];
+let displayedProducts = [];
+let currentConfig = {};
+let itemsPerPage = 40;
+let currentIndex = 0;
+
 export const toggleLoader = (show) => {
     elements.loader.classList.toggle("hidden", !show);
 };
 
-export const renderProducts = (products, config) => {
-    
-    if (products.length === 0) {
-        elements.productTableBody.innerHTML = `
-            <tr>
-                <td colspan="5" class="empty-state" style="text-align: center; display: block; width: 100%;">
-                    No se han encontrado productos.
-                </td>
-            </tr>`;
+const createRow = (product, config) => {
+    const { monedaDisplay, precioDisplay, isPrecioConvertido, altPrice } = formatProductPrice(product, config);
+    const unidadLabel = ["UN", "Un"].includes(product.unidad) ? "x Unidad" : "x Metro";
+    const convertClass = isPrecioConvertido ? 'price-converted' : '';
+    const mark = isPrecioConvertido ? '<span class="price-asterisk">*</span>' : '';
+
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+        <td data-label="Producto" class="col-producto">
+            <span class="product-code"><span class="code-label">Cód:</span> ${product.producto}</span>
+        </td>
+        <td data-label="Detalle" class="col-detalle">
+            ${product.detalle}
+        </td>
+        <td data-label="Marca" class="col-marca">
+            <span class="brand-badge"><span class="brand-label">Marca:</span> ${product.marca}</span>
+        </td>
+        <td data-label="U/M" class="col-um">
+           <div class="meta-info">
+             <span class="meta-label">U/M:</span>
+             <span class="meta-value">${unidadLabel}</span>
+           </div>
+        </td>
+        <td data-label="Precio" class="col-precio ${convertClass}" tabindex="0">
+           <div class="price-section">
+              <div class="cell-value">
+                  <span class="currency-symbol">${monedaDisplay}</span> ${precioDisplay}${mark}
+              </div>
+              ${altPrice ? `<div class="price-tooltip">${altPrice}</div>` : ''}
+           </div>
+        </td>
+    `;
+    return tr;
+};
+
+export const renderProducts = (products, config, append = false) => {
+    if (!append) {
+        elements.productTableBody.innerHTML = '';
+        allProducts = products;
+        currentConfig = config;
+        currentIndex = 0;
+        window.scrollTo(0, 0);
+    }
+
+    if (allProducts.length === 0) {
+        elements.productTableBody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding: 3rem;">No se encontraron productos.</td></tr>';
         return;
     }
 
-    const rowsHtml = products.map((product) => {
-        
-        const { monedaDisplay, precioDisplay, isPrecioConvertido, altPrice } = formatProductPrice(product, config);
-        
-        // Unidades más descriptivas para el catálogo
-        const unidadLabel = ["UN", "Un"].includes(product.unidad) ? "x Unidad" : "x Metro";
-        const convertClass = isPrecioConvertido ? 'price-converted' : '';
-        const mark = isPrecioConvertido ? '<span class="price-asterisk">*</span>' : '';
+    const fragment = document.createDocumentFragment();
+    const limit = Math.min(currentIndex + itemsPerPage, allProducts.length);
 
-        return `
-            <tr>
-                <td data-label="Producto" class="col-producto">
-                    <span class="product-code"><span class="code-label">Cód:</span> ${product.producto}</span>
-                </td>
-                <td data-label="Detalle" class="col-detalle">
-                    ${product.detalle}
-                </td>
-                <td data-label="Marca" class="col-marca">
-                    <span class="brand-badge"><span class="brand-label">Marca:</span> ${product.marca}</span>
-                </td>
-                <td data-label="U/M" class="col-um">
-                   <div class="meta-info">
-                     <span class="meta-label">U/M:</span>
-                     <span class="meta-value">${unidadLabel}</span>
-                   </div>
-                </td>
-                <td data-label="Precio" class="col-precio ${convertClass}" tabindex="0">
-                   <div class="price-section">
-                      <div class="cell-value">
-                          <span class="currency-symbol">${monedaDisplay}</span> ${precioDisplay}${mark}
-                      </div>
-                      ${altPrice ? `<div class="price-tooltip">${altPrice}</div>` : ''}
-                   </div>
-                </td>
-            </tr>
-        `;
-    }).join('');
+    for (let i = currentIndex; i < limit; i++) {
+        fragment.appendChild(createRow(allProducts[i], currentConfig));
+    }
+
+    elements.productTableBody.appendChild(fragment);
+    currentIndex = limit;
+
+    if (currentIndex < allProducts.length) {
+        initObserver();
+    }
+};
+
+let observer;
+const initObserver = () => {
+    if (observer) observer.disconnect();
     
-    elements.productTableBody.innerHTML = rowsHtml;
+    const lastRow = elements.productTableBody.lastElementChild;
+    if (!lastRow) return;
+
+    observer = new IntersectionObserver((entries) => {
+        if (entries[0].isIntersecting) {
+            observer.disconnect();
+            renderProducts(allProducts, currentConfig, true);
+        }
+    }, { rootMargin: '400px' });
+
+    observer.observe(lastRow);
 };
 
 export const updateDollarUI = (data) => {
     if (!data) return;
     if (elements.dollarPrice) elements.dollarPrice.textContent = `$${data.venta}`;
-    
     if (elements.dollarDate) {
         const fecha = new Date(data.fechaActualizacion);
         elements.dollarDate.textContent = `(${fecha.toLocaleDateString('es-AR')})`;
     }
-    
     if (elements.currencyToggle) elements.currencyToggle.style.display = "flex";
 };
 
@@ -104,15 +136,10 @@ export const setupTheme = () => {
     }
     
     elements.themeToggle.addEventListener('click', () => {
-        // Desactivar transiciones para evitar lag
         document.documentElement.classList.add('no-transitions');
-        
         const isNowDark = document.body.classList.toggle('dark-mode');
         localStorage.setItem('theme', isNowDark ? 'dark' : 'light');
-        
         updateThemeIcon(isNowDark);
-        
-        // Re-activar transiciones después de un breve momento
         setTimeout(() => {
             document.documentElement.classList.remove('no-transitions');
         }, 100);
