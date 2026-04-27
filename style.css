@@ -31,16 +31,17 @@ header {
   padding: 0.5rem 1.5rem; display: flex; flex-direction: column; justify-content: center;
 }
 
-/* --- HEADER --- */
+/* --- HEADER ELEMENTS --- */
 .nav-container { width: 100%; max-width: 1200px; margin: 0 auto; display: flex; flex-direction: column; gap: 0.8rem; }
 .header-top { display: flex; align-items: center; justify-content: space-between; width: 100%; }
 .logo { display: flex; align-items: center; gap: 0.5rem; font-weight: 800; font-size: 1.2rem; color: var(--text); text-decoration: none; }
 .logo img { height: 28px; }
 .controls { display: flex; align-items: center; gap: 0.75rem; }
 
-.dollar-tag { display: flex; flex-direction: column; line-height: 1.2; text-align: right; }
+.dollar-tag { display: flex; flex-direction: column; line-height: 1.2; text-align: left; } /* Cambiado a left para mejor alineación móvil */
 .dollar-label { font-size: 0.6rem; font-weight: 700; color: var(--text-muted); text-transform: uppercase; }
 #dollarPrice { font-size: 0.9rem; font-weight: 800; color: var(--text); }
+
 
 .btn-icon { background: var(--bg-subtle); border: 1px solid var(--border); border-radius: 12px; cursor: pointer; display: flex; align-items: center; gap: 0.4rem; padding: 0.5rem 0.75rem; font-weight: 700; font-size: 0.8rem; color: var(--text); transition: all 0.2s; }
 .btn-icon.active { background: rgba(16, 185, 129, 0.1); border-color: var(--accent); color: var(--accent); }
@@ -99,6 +100,7 @@ td.col-precio { grid-area: precio; justify-content: flex-end; border-top: 1px so
 
 @media (min-width: 850px) {
   :root { --header-height: 100px; }
+  .dollar-tag { text-align: right; } /* Restaurar a la derecha en PC */
   #productTable { display: table; border-spacing: 0; border-collapse: collapse; }
   #productTable thead { display: table-header-group !important; }
   th { text-align: left; padding: 1.25rem 1rem; background: var(--bg-subtle); color: var(--text-muted); font-size: 0.7rem; text-transform: uppercase; border-bottom: 2px solid var(--border); }
@@ -107,3 +109,18 @@ td.col-precio { grid-area: precio; justify-content: flex-end; border-top: 1px so
   td { display: table-cell; padding: 1.25rem 1rem; border-bottom: 1px solid var(--border); vertical-align: middle; }
   td.col-um, td.col-precio { border-top: none; padding-top: 1.25rem; font-size: 1.1rem; }
 }
+
+/* --- LOADER & STATUS --- */
+#loader { 
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  min-height: 60vh; /* Centrado vertical casi perfecto */
+  color: var(--text-muted); gap: 1.25rem; 
+}
+.spinner { 
+  width: 44px; height: 44px; border: 4px solid var(--border); 
+  border-top-color: var(--accent); border-radius: 50%; 
+  animation: spin 0.8s linear infinite; 
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+.hidden { display: none !important; }
+
