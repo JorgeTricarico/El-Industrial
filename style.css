@@ -83,8 +83,8 @@ body.dark-mode #themeToggle {
   .logo img { height: 20px; }
   .dollar-label { display: none; }
   .dollar-date { display: none; }
-  #currencyToggle span { display: none; } 
-  .btn-icon { padding: 0.4rem; min-width: 36px; justify-content: center; }
+  #currencyToggle span { display: inline; font-size: 0.7rem; } 
+  .btn-icon { padding: 0.4rem 0.6rem; min-width: auto; justify-content: center; }
   .dollar-tag { padding: 0.2rem 0.5rem; border-radius: 12px; }
   #dollarPrice { font-size: 0.75rem; }
   .controls { gap: 0.25rem; }
