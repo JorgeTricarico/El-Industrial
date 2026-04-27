@@ -11,34 +11,36 @@ const state = {
 };
 
 const init = async () => {
+    // 1. UI Crítica (Inmediata y no bloqueante)
     ui.setupTheme();
+    lucide.createIcons();
     ui.toggleLoader(true);
 
+    // 2. Carga de Datos (con manejo de errores individual)
     try {
-        // Parallel fetching of independent data
-        const [branding, dollarData, fileName] = await Promise.all([
-            api.loadBranding(),
-            api.fetchDollarPrice().catch(() => null),
-            api.fetchLatestJsonFileName()
-        ]);
-
+        const branding = await api.loadBranding().catch(() => null);
         if (branding) {
             document.title = `${branding.siteName} - Catálogo`;
             if (ui.elements.brandName) ui.elements.brandName.textContent = branding.siteName;
         }
 
+        const dollarData = await api.fetchDollarPrice().catch(err => {
+            console.warn("Dollar API failed, but continuing...", err);
+            return null;
+        });
+
         if (dollarData) {
             state.usDollarPrice = dollarData.venta;
             ui.updateDollarUI(dollarData);
         } else {
-            // Si falla el dólar, igual mostramos el botón (usará un fallback o cargará luego)
             ui.elements.currencyToggle.style.display = "flex";
         }
 
+        const fileName = await api.fetchLatestJsonFileName();
         state.fileName = fileName;
         ui.updateDateUI(fileName);
 
-        // Load products (from cache or API)
+        // Load products
         const storedName = localStorage.getItem('jsonFileName');
         const storedData = localStorage.getItem('products');
 
@@ -52,11 +54,12 @@ const init = async () => {
 
         refreshUI();
     } catch (error) {
-        console.error("Initialization failed:", error);
-        ui.elements.productTableBody.innerHTML = `<tr><td colspan="5" style="text-align:center; color: var(--error);">Error al cargar la base de datos.</td></tr>`;
+        console.error("Critical initialization failed:", error);
+        ui.elements.productTableBody.innerHTML = `<tr><td colspan="5" style="text-align:center; color: var(--error);">Error al cargar la base de datos. Verifique su conexión.</td></tr>`;
     } finally {
         ui.toggleLoader(false);
-        ui.elements.searchInput.focus();
+        if (ui.elements.searchInput) ui.elements.searchInput.focus();
+        lucide.createIcons(); // Re-sincronizar iconos por si acaso
     }
 };
 

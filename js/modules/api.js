@@ -4,13 +4,13 @@
 
 export const fetchLatestJsonFileName = async () => {
     try {
-        const response = await fetch("/latest-json-filename.json");
+        const response = await fetch("latest-json-filename.json");
         if (!response.ok) throw new Error("JSON naming file not found");
         const data = await response.json();
         return data.filename.trim();
     } catch (error) {
         console.warn("Falling back to .txt for filename");
-        const response = await fetch("/latest-json-filename.txt");
+        const response = await fetch("latest-json-filename.txt");
         if (response.ok) {
             const text = await response.text();
             return text.trim();
