@@ -89,26 +89,6 @@
   </main>
 
   <!-- Scripts -->
-  <script type="module" src="js/main.js?v=1.2"></script>
-  <script>
-    // Initialize icons
-    window.addEventListener('DOMContentLoaded', () => {
-      lucide.createIcons();
-      
-      // Update icon on theme toggle
-      const btn = document.getElementById('themeToggle');
-      if (btn) {
-        btn.addEventListener('click', () => {
-          setTimeout(() => {
-            const isDark = document.body.classList.contains('dark-mode');
-            btn.innerHTML = isDark 
-              ? '<i data-lucide="sun" style="width: 22px; height: 22px;"></i>' 
-              : '<i data-lucide="moon" style="width: 22px; height: 22px;"></i>';
-            lucide.createIcons();
-          }, 50);
-        });
-      }
-    });
-  </script>
+  <script type="module" src="js/main.js?v=1.3"></script>
 </body>
 </html>

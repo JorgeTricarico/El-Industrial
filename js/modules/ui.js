@@ -98,10 +98,30 @@ export const updateDateUI = (fileName) => {
 
 export const setupTheme = () => {
     const isDark = localStorage.getItem('theme') === 'dark';
-    if (isDark) document.body.classList.add('dark-mode');
+    if (isDark) {
+        document.body.classList.add('dark-mode');
+        updateThemeIcon(true);
+    }
     
     elements.themeToggle.addEventListener('click', () => {
+        // Desactivar transiciones para evitar lag
+        document.documentElement.classList.add('no-transitions');
+        
         const isNowDark = document.body.classList.toggle('dark-mode');
         localStorage.setItem('theme', isNowDark ? 'dark' : 'light');
+        
+        updateThemeIcon(isNowDark);
+        
+        // Re-activar transiciones después de un breve momento
+        setTimeout(() => {
+            document.documentElement.classList.remove('no-transitions');
+        }, 100);
     });
+};
+
+const updateThemeIcon = (isDark) => {
+    elements.themeToggle.innerHTML = isDark 
+        ? '<i data-lucide="sun" style="width: 22px; height: 22px;"></i>' 
+        : '<i data-lucide="moon" style="width: 22px; height: 22px;"></i>';
+    if (window.lucide) lucide.createIcons();
 };
