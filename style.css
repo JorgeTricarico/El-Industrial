@@ -78,16 +78,16 @@ body.dark-mode #themeToggle {
 
 /* Responsive Header Mobile */
 @media (max-width: 500px) {
-  header { padding: 0.5rem 0.75rem; }
-  .logo span { font-size: 0.9rem; }
-  .logo img { height: 20px; }
-  .dollar-label { display: none; }
+  header { padding: 0.5rem 0.5rem; }
+  .logo span { font-size: 0.85rem; }
+  .logo img { height: 18px; }
+  .dollar-label { display: block; font-size: 0.5rem; opacity: 0.8; } /* Etiqueta mínima visible */
   .dollar-date { display: none; }
-  #currencyToggle span { display: inline; font-size: 0.7rem; } 
-  .btn-icon { padding: 0.4rem 0.6rem; min-width: auto; justify-content: center; }
-  .dollar-tag { padding: 0.2rem 0.5rem; border-radius: 12px; }
+  #currencyToggle span { display: inline; font-size: 0.65rem; font-weight: 800; } 
+  .btn-icon { padding: 0.3rem 0.5rem; min-width: auto; gap: 0.2rem; }
+  .dollar-tag { padding: 0.2rem 0.4rem; border-radius: 8px; gap: 1px; }
   #dollarPrice { font-size: 0.75rem; }
-  .controls { gap: 0.25rem; }
+  .controls { gap: 0.3rem; }
 }
 
 @media (max-width: 380px) {
