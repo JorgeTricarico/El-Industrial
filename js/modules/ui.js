@@ -17,7 +17,6 @@ export const elements = {
 };
 
 let allProducts = [];
-let displayedProducts = [];
 let currentConfig = {};
 let itemsPerPage = 40;
 let currentIndex = 0;
@@ -30,31 +29,29 @@ const createRow = (product, config) => {
     const { monedaDisplay, precioDisplay, isPrecioConvertido, altPrice } = formatProductPrice(product, config);
     const unidadLabel = ["UN", "Un"].includes(product.unidad) ? "x Unidad" : "x Metro";
     const convertClass = isPrecioConvertido ? 'price-converted' : '';
-    const mark = isPrecioConvertido ? '<span class="price-asterisk">*</span>' : '';
-
+    
     const tr = document.createElement('tr');
     tr.innerHTML = `
-        <td data-label="Producto" class="col-producto">
+        <td class="col-producto">
             <span class="product-code"><span class="code-label">Cód:</span> ${product.producto}</span>
         </td>
-        <td data-label="Detalle" class="col-detalle">
-            ${product.detalle}
+        <td class="col-detalle">${product.detalle}</td>
+        <td class="col-marca">
+            <span class="brand-badge">${product.marca}</span>
         </td>
-        <td data-label="Marca" class="col-marca">
-            <span class="brand-badge"><span class="brand-label">Marca:</span> ${product.marca}</span>
-        </td>
-        <td data-label="U/M" class="col-um">
+        <td class="col-um">
            <div class="meta-info">
              <span class="meta-label">U/M:</span>
              <span class="meta-value">${unidadLabel}</span>
            </div>
         </td>
-        <td data-label="Precio" class="col-precio ${convertClass}" tabindex="0">
+        <td class="col-precio ${convertClass}" tabindex="0">
            <div class="price-section">
               <div class="cell-value">
-                  <span class="currency-symbol">${monedaDisplay}</span> ${precioDisplay}${mark}
+                  <span class="currency-symbol">${monedaDisplay}</span> ${precioDisplay}
+                  <span class="info-icon">ⓘ</span>
               </div>
-              ${altPrice ? `<div class="price-tooltip">${altPrice}</div>` : ''}
+              <div class="price-tooltip">${altPrice}</div>
            </div>
         </td>
     `;
@@ -93,17 +90,14 @@ export const renderProducts = (products, config, append = false) => {
 let observer;
 const initObserver = () => {
     if (observer) observer.disconnect();
-    
     const lastRow = elements.productTableBody.lastElementChild;
     if (!lastRow) return;
-
     observer = new IntersectionObserver((entries) => {
         if (entries[0].isIntersecting) {
             observer.disconnect();
             renderProducts(allProducts, currentConfig, true);
         }
     }, { rootMargin: '400px' });
-
     observer.observe(lastRow);
 };
 
@@ -134,7 +128,6 @@ export const setupTheme = () => {
         document.body.classList.add('dark-mode');
         updateThemeIcon(true);
     }
-    
     elements.themeToggle.addEventListener('click', () => {
         document.documentElement.classList.add('no-transitions');
         const isNowDark = document.body.classList.toggle('dark-mode');
