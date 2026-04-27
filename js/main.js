@@ -82,8 +82,8 @@ ui.elements.currencyToggle.addEventListener('click', () => {
     state.showInARS = !state.showInARS;
     ui.elements.currencyToggle.classList.toggle('active', state.showInARS);
     ui.elements.currencyToggle.innerHTML = state.showInARS 
-        ? '<i data-lucide="refresh-cw" style="width: 14px; height: 14px;"></i><span>Conv. U$S</span>' 
-        : '<i data-lucide="refresh-cw" style="width: 14px; height: 14px;"></i><span>Conv. AR$</span>';
+        ? '<i data-lucide="refresh-cw" style="width: 14px; height: 14px;"></i><span>U$S</span>' 
+        : '<i data-lucide="refresh-cw" style="width: 14px; height: 14px;"></i><span>AR$</span>';
     lucide.createIcons();
     refreshUI();
 });

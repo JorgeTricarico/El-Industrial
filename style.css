@@ -78,22 +78,21 @@ body.dark-mode #themeToggle {
 
 /* Responsive Header Mobile */
 @media (max-width: 500px) {
-  header { padding: 0.5rem 0.5rem; }
-  .logo span { font-size: 0.85rem; }
-  .logo img { height: 18px; }
-  .dollar-label { display: block; font-size: 0.5rem; opacity: 0.8; } /* Etiqueta mínima visible */
-  .dollar-date { display: none; }
-  #currencyToggle span { display: inline; font-size: 0.65rem; font-weight: 800; } 
-  .btn-icon { padding: 0.3rem 0.5rem; min-width: auto; gap: 0.2rem; }
-  .dollar-tag { padding: 0.2rem 0.4rem; border-radius: 8px; gap: 1px; }
-  #dollarPrice { font-size: 0.75rem; }
-  .controls { gap: 0.3rem; }
+  header { padding: 0.4rem 0.4rem; }
+  .logo span { font-size: 0.8rem; }
+  .logo img { height: 16px; }
+  .dollar-label { display: block; font-size: 0.45rem; } 
+  #currencyToggle span { display: inline; font-size: 0.6rem; font-weight: 800; } 
+  .btn-icon { padding: 0.3rem 0.4rem; min-width: auto; gap: 0.15rem; }
+  .dollar-tag { padding: 0.2rem 0.3rem; border-radius: 6px; }
+  #dollarPrice { font-size: 0.7rem; }
+  .controls { gap: 0.2rem; }
 }
 
 @media (max-width: 380px) {
   .logo span { display: none; } 
-  .header-top { gap: 0.25rem; }
-  .nav-container { gap: 0.4rem; }
+  #currencyToggle span::before { content: ""; } /* Aquí podríamos quitar 'Conv.' si fuera necesario */
+  .header-top { gap: 0.1rem; }
 }
 
 .dollar-tag { 

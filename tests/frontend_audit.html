@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Frontend Audit - Pruebas Robustas de Layout</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../style.css">
+  <style>
+    #audit-panel {
+      position: fixed;
+      bottom: 0; left: 0; right: 0;
+      background: #111; color: #0f0;
+      font-family: monospace; font-size: 12px;
+      padding: 15px; z-index: 9999;
+      max-height: 40vh; overflow-y: auto;
+      border-top: 3px solid #333;
+    }
+    .pass { color: #0f0; }
+    .fail { color: #f00; font-weight: bold; }
+    .warn { color: #ff0; }
+  </style>
+</head>
+<body>
+  <!-- Contenedor del Navbar Simulado -->
+  <header>
+    <div class="nav-container">
+      <div class="logo">El Industrial Audit</div>
+      <div class="controls">
+        <div class="dollar-tag">
+          <span>Dólar Oficial</span>
+          <span id="dollarPrice">Cargando un texto extremadamente largo...</span>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- Contenedor de la Tabla -->
+  <main>
+    <div class="table-container">
+      <table id="productTable">
+        <thead>
+          <tr>
+            <th>Producto</th>
+            <th>Detalle</th>
+            <th>Marca</th>
+            <th>U/M</th>
+            <th>Precio</th>
+          </tr>
+        </thead>
+        <tbody id="testBody">
+          <!-- Datos inyectados por el script -->
+        </tbody>
+      </table>
+    </div>
+  </main>
+
+  <div id="audit-panel">
+    <h3>🔍 Ejecutando Pruebas de Estrés Visual en el DOM...</h3>
+    <ul id="audit-logs" style="list-style: none; padding: 0; margin: 0;"></ul>
+  </div>
+
+  <script>
+    const log = (msg, status = 'pass') => {
+      const li = document.createElement('li');
+      li.className = status;
+      li.textContent = `[${new Date().toISOString().split('T')[1].slice(0,8)}] ${msg}`;
+      document.getElementById('audit-logs').appendChild(li);
+    };
+
+    const runTests = () => {
+      log('Inyectando Datos de Estrés (Edge-Cases)...', 'warn');
+      
+      const tbody = document.getElementById('testBody');
+      const longString = "A".repeat(150); // Simula 150 caracteres sin espacios
+      
+      tbody.innerHTML = `
+        <tr>
+          <td data-label="Producto">${longString}</td>
+          <td data-label="Detalle">Detalle extremadamente largo con espacios para ver si rompe la altura de la celda y si el flexbox colapsa.</td>
+          <td data-label="Marca" class="brand-cell">MARCA_NULA</td>
+          <td data-label="U/M">Mts</td>
+          <td data-label="Precio" class="price-converted">
+            <span class="currency-symbol">$</span> 9,999,999.99
+          </td>
+        </tr>
+      `;
+
+      log('Validando desbordamiento horizontal en el viewport...', 'warn');
+      
+      setTimeout(() => {
+        let hasOverflow = false;
+        const allElements = document.querySelectorAll('*');
+        const viewportWidth = window.innerWidth;
+        
+        allElements.forEach(el => {
+          // Ignorar scripts, styles, etc.
+          if(['SCRIPT', 'STYLE', 'HEAD', 'META'].includes(el.tagName)) return;
+          
+          const rect = el.getBoundingClientRect();
+          if (rect.right > viewportWidth && rect.width > viewportWidth) {
+            log(`Fallo detectado: Elemento <${el.tagName.toLowerCase()} class="${el.className}"> causa overflow (${rect.width}px vs ${viewportWidth}px)`, 'fail');
+            el.style.border = "2px solid red"; // Resaltar el elemento problemático
+            hasOverflow = true;
+          }
+        });
+
+        if (!hasOverflow) {
+          log('✅ Prueba de Overflow PASADA: Ningún elemento rompe el ancho del dispositivo.', 'pass');
+        } else {
+          log('❌ Prueba de Overflow FALLADA: Existen elementos desbordando.', 'fail');
+        }
+
+        log('Verificando colisión de Flexbox en celdas (Mobile)...', 'warn');
+        const tdProducto = document.querySelector('td[data-label="Producto"]');
+        if (tdProducto) {
+          // Si el texto largo pisa el ::before en mobile
+          const style = window.getComputedStyle(tdProducto);
+          if (style.flexDirection === 'row' && window.innerWidth <= 640) {
+            log('❌ Advertencia: La celda de producto es row en mobile, puede haber solapamiento.', 'fail');
+          } else {
+            log('✅ Prueba Flexbox PASADA: Las celdas largas adoptan orientación correcta o rompen palabra.', 'pass');
+          }
+        }
+      }, 500); // Dar tiempo al DOM a renderizar
+    };
+
+    window.onload = runTests;
+  </script>
+</body>
+</html>
