@@ -37,7 +37,7 @@ const createRow = (product, config) => {
         </td>
         <td class="col-detalle">${product.detalle}</td>
         <td class="col-marca">
-            <span class="brand-badge">${product.marca}</span>
+            <span class="brand-badge"><span class="brand-label">Marca:</span> ${product.marca}</span>
         </td>
         <td class="col-um">
            <div class="meta-info">
