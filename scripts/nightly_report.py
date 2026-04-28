@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-import os, json, requests
+import os, json, requests, time
 from datetime import datetime
 from dotenv import load_dotenv
 
@@ -122,7 +122,6 @@ def rotate_logs(log_paths, max_lines=1000):
                 print(f"Error rotando log {path}: {e}")
 
 def main():
-    import time
     accum_path = os.path.join(STATUS_DIR, "daily_accum.json")
     metrics_path = os.path.join(STATUS_DIR, "metrics.jsonl")
     reports_log = os.path.join(BASE_DIR, "reports", "cron_log.txt")
