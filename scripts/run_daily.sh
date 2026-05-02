@@ -59,6 +59,12 @@ fi
 log_message "Ejecutando reporte ejecutivo nocturno..."
 python3 "$SCRIPT_DIR/nightly_report.py"
 
+# --- No pushear si es un nodo de backup (iQual-Mint) ---
+if [[ "$HOSTNAME" == *"mint"* ]]; then
+    log_message "Nodo Secundario (Backup): No se realizará push a GitHub para evitar conflictos."
+    exit 0
+fi
+
 # --- Gestión de Git (con Reintentos) ---
 log_message "Procesando cambios en Git..."
 
@@ -101,3 +107,4 @@ fi
 
 log_message "Proceso finalizado correctamente."
 exit 0
+
