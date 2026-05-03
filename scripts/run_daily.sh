@@ -32,7 +32,7 @@ fi
 cd "$PROJECT_ROOT" || exit
 
 # --- Lógica de Nodo Secundario (Iqual-Mint) ---
-if [[ "$HOSTNAME" == *"mint"* ]]; then
+if [[ "${HOSTNAME,,}" == *"mint"* ]]; then
     log_message "Nodo Secundario detectado. Verificando si el Nodo Principal ya cumplió..."
     URL="https://raw.githubusercontent.com/JorgeTricarico/El-Industrial/main/data/lista_precio_${FILE_DATE}_json_compres.gz"
     if curl --output /dev/null --silent --head --fail "$URL"; then
@@ -60,7 +60,7 @@ log_message "Ejecutando reporte ejecutivo nocturno..."
 python3 "$SCRIPT_DIR/nightly_report.py"
 
 # --- No pushear si es un nodo de backup (iQual-Mint) ---
-if [[ "$HOSTNAME" == *"mint"* ]]; then
+if [[ "${HOSTNAME,,}" == *"mint"* ]]; then
     log_message "Nodo Secundario (Backup): No se realizará push a GitHub para evitar conflictos."
     exit 0
 fi
