@@ -142,3 +142,4 @@ if __name__ == "__main__":
         with gzip.open(os.path.join(BASE_DIR, rel_path), "wt", encoding="utf-8") as f: 
             json.dump(new_items, f, indent=2, ensure_ascii=False)
         with open(LATEST_INDEX_FILE, "w") as f: f.write(rel_path)
+
