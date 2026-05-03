@@ -2,31 +2,28 @@ name: Cloud Fallback Sync
 
 on:
   schedule:
-    - cron: '30 23 * * *' # Se ejecuta a las 23:30 (después de todos los nodos locales)
-  workflow_dispatch: # Permite ejecución manual
+    - cron: '30 23 * * *' 
+  workflow_dispatch: 
 
 jobs:
-  fallback:
+  check-and-sync:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Check if updated today
+      - name: Verify if update is needed
         id: check_sync
         run: |
           LATEST_FILE=$(cat latest-json-filename.txt)
-          # Extraer fecha del nombre del archivo (ej: data/lista_precio_26-05-02_...)
           FILE_DATE=$(echo $LATEST_FILE | grep -oE '[0-9]{2}-[0-9]{2}-[0-9]{2}')
           TODAY=$(date +%y-%m-%d)
           
           if [ "$FILE_DATE" == "$TODAY" ]; then
-            echo "SUCCESS: El sistema ya fue actualizado hoy por un nodo local ($FILE_DATE)."
+            echo "✅ El sistema ya está al día ($FILE_DATE). Abortando ejecución para ahorrar recursos."
             echo "skip=true" >> $GITHUB_OUTPUT
           else
-            echo "WARNING: No se detectó actualización de hoy. Iniciando FALLBACK en la nube."
+            echo "⚠️ No se detectó actualización hoy. Iniciando FALLBACK."
             echo "skip=false" >> $GITHUB_OUTPUT
           fi
 
