@@ -1,0 +1,64 @@
+name: Cloud Fallback Sync
+
+on:
+  schedule:
+    - cron: '30 23 * * *' # Se ejecuta a las 23:30 (después de todos los nodos locales)
+  workflow_dispatch: # Permite ejecución manual
+
+jobs:
+  fallback:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Check if updated today
+        id: check_sync
+        run: |
+          LATEST_FILE=$(cat latest-json-filename.txt)
+          # Extraer fecha del nombre del archivo (ej: data/lista_precio_26-05-02_...)
+          FILE_DATE=$(echo $LATEST_FILE | grep -oE '[0-9]{2}-[0-9]{2}-[0-9]{2}')
+          TODAY=$(date +%y-%m-%d)
+          
+          if [ "$FILE_DATE" == "$TODAY" ]; then
+            echo "SUCCESS: El sistema ya fue actualizado hoy por un nodo local ($FILE_DATE)."
+            echo "skip=true" >> $GITHUB_OUTPUT
+          else
+            echo "WARNING: No se detectó actualización de hoy. Iniciando FALLBACK en la nube."
+            echo "skip=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Setup Python
+        if: steps.check_sync.outputs.skip == 'false'
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Dependencies
+        if: steps.check_sync.outputs.skip == 'false'
+        run: |
+          pip install requests xlsxwriter python-dotenv
+
+      - name: Run Update (Fallback)
+        if: steps.check_sync.outputs.skip == 'false'
+        env:
+          BERTUAL_CUIT: ${{ secrets.BERTUAL_CUIT }}
+          BERTUAL_PASSWORD: ${{ secrets.BERTUAL_PASSWORD }}
+          BERTUAL_CLIENT_ID: ${{ secrets.BERTUAL_CLIENT_ID }}
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: |
+          python scripts/update_products.py
+          python scripts/nightly_report.py
+
+      - name: Commit and Push
+        if: steps.check_sync.outputs.skip == 'false'
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action Fallback"
+          git add .
+          git commit -m "🚀 Cloud Fallback: Actualización automática (Nodos locales offline)"
+          git push origin main
