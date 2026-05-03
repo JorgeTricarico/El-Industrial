@@ -64,7 +64,10 @@ def main():
     top_brands = sorted(stats["marcas"].items(), key=lambda x: x[1], reverse=True)[:5]
     top_hikes = sorted(stats["aumentos"], key=lambda x: x["p"], reverse=True)[:15]
 
-    prompt = f"""
+    if len(updated_items) == 0:
+        analysis = "✅ <b>Sin Novedades:</b> No se detectaron actualizaciones de precios ni productos nuevos en el día de hoy."
+    else:
+        prompt = f"""
 Actúa como analista de precios para una ferretería. 
 Sé MUY CONCISO. Reporte estilo Telegram. 
 USA SOLO LISTAS Y BOLD. No escribas introducciones ni "cuentitos".
@@ -80,10 +83,9 @@ INSTRUCCIONES:
 3. 🕒 **CARGA**: Basado en datos, ¿cuándo fue la carga?
 4. **FORMATO**: Usa <b>texto</b> para resaltar. No uses Markdown (* o _).
 """
-
-    analysis = get_ai_analysis(prompt)
-    # Limpiar posibles caracteres Markdown que la IA meta por inercia
-    analysis = analysis.replace("*", "").replace("_", "")
+        analysis = get_ai_analysis(prompt)
+        # Limpiar posibles caracteres Markdown que la IA meta por inercia
+        analysis = analysis.replace("*", "").replace("_", "")
     
     fecha = datetime.now().strftime("%d/%m/%Y")
     full_report = f"<b>🌙 REPORTE INDUSTRIAL - {fecha}</b>\n\n{analysis}"
@@ -104,3 +106,4 @@ INSTRUCCIONES:
 
 if __name__ == "__main__":
     main()
+
