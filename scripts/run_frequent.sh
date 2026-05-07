@@ -28,6 +28,13 @@ fi
 
 cd "$PROJECT_ROOT" || exit
 
+# --- Sincronización Inicial ---
+git pull origin main --quiet
+
+# --- Evitar ejecución si el nodo ya está actualizado (opcional para frecuente) ---
+# Si queremos que el frecuente siga corriendo para capturar telemetría, no lo bloqueamos por fecha.
+# Pero sí debemos evitar que corra si el lock file local existe.
+
 # --- Ejecución Silenciosa ---
 if [ -d "$VENV_PATH" ]; then
     source "$VENV_PATH/bin/activate"
@@ -36,7 +43,14 @@ fi
 python3 "$SCRIPT_DIR/update_products.py" --silent
 PY_EXIT_CODE=$?
 
-if [ $PY_EXIT_CODE -ne 0 ]; then
+if [ $PY_EXIT_CODE -eq 0 ]; then
+    # Subir métricas y heartbeat incluso en ejecuciones frecuentes
+    git add status/heartbeat.json status/metrics.jsonl 2>/dev/null
+    if [[ -n $(git status -s status/) ]]; then
+        git commit -m "Telemetría frecuente: $(date +%H:%M) [$HOSTNAME] [skip ci]" --quiet
+        git push origin main --quiet
+    fi
+else
     log_message "ERROR: Ejecución frecuente falló con código $PY_EXIT_CODE."
     exit 1
 fi
