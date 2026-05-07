@@ -33,12 +33,12 @@ def get_ai_analysis(prompt):
                 if attempt == max_retries - 1: break
                 time.sleep(2)
 
-    # Respaldo: Cerebras Llama 3.1 70B (Ultra rápido)
+    # Respaldo: Cerebras Qwen 2.5 72B (Máximo razonamiento)
     if CEREBRAS_API_KEY:
         try:
             url = "https://api.cerebras.ai/v1/chat/completions"
             headers = {"Authorization": f"Bearer {CEREBRAS_API_KEY}", "Content-Type": "application/json"}
-            payload = {"model": "llama3.1-70b", "messages": [{"role": "user", "content": prompt}]}
+            payload = {"model": "qwen2.5-72b", "messages": [{"role": "user", "content": prompt}]}
             res = requests.post(url, json=payload, headers=headers, timeout=30)
             if res.ok: return res.json()["choices"][0]["message"]["content"].strip()
         except: pass
