@@ -38,15 +38,19 @@ jobs:
 
           if [ $DIFF -ge 24 ]; then
             echo "🚨 Alerta: Nodos locales offline por más de 24h. Activando Failover..."
-            # Corremos el script con el flag de reporte
-            python3 scripts/update_products.py --report
             
-            # Actualizamos el heartbeat para que el CI sepa que él mismo cumplió la tarea
+            # Ejecutar actualización
+            python3 scripts/update_products.py
+            
+            # Ejecutar reporte
+            python3 scripts/nightly_report.py
+            
+            # Sincronizar cambios
             git config --global user.name "GitHub Action Watchdog"
             git config --global user.email "actions@github.com"
-            git add status/ metrics.jsonl data/
+            git add .
             git commit -m "chore: failover recovery update [skip ci]"
-            git push
+            git push origin main
           else
             echo "✅ Nodos locales funcionando correctamente. GitHub Watchdog en espera."
           fi

@@ -4,6 +4,7 @@ __pycache__/
 .env
 reports/
 status/
+!status/heartbeat.json
 !data/
 !latest-json-filename.json
 !latest-json-filename.txt
