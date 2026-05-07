@@ -16,13 +16,22 @@ TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 
 def get_ai_analysis(prompt):
-    # Prioridad 1: Gemini 3.1 Flash-Lite
+    # Prioridad 1: Gemini 3.1 Flash-Lite (Modelo Gratis y Potente Mayo 2026)
     if GEMINI_API_KEY:
-        try:
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite-preview:generateContent?key={GEMINI_API_KEY}"
-            res = requests.post(url, json={"contents": [{"parts": [{"text": prompt}]}]}, timeout=40)
-            if res.ok: return res.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
-        except: pass
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite-preview:generateContent?key={GEMINI_API_KEY}"
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                res = requests.post(url, json={"contents": [{"parts": [{"text": prompt}]}]}, timeout=40)
+                if res.status_code == 429: # Rate limit
+                    wait = (attempt + 1) * 10
+                    time.sleep(wait)
+                    continue
+                if res.ok: 
+                    return res.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
+            except:
+                if attempt == max_retries - 1: break
+                time.sleep(2)
 
     # Respaldo: Cerebras Qwen 2.5 72B
     if CEREBRAS_API_KEY:
@@ -34,7 +43,7 @@ def get_ai_analysis(prompt):
             if res.ok: return res.json()["choices"][0]["message"]["content"].strip()
         except: pass
 
-    return "Error al generar análisis."
+    return "Error al generar análisis (API saturada o sin cuota)."
 
 def main():
     accum_path = os.path.join(STATUS_DIR, "daily_accum.json")
@@ -68,9 +77,9 @@ def main():
         analysis = "✅ <b>Sin Novedades:</b> No se detectaron actualizaciones de precios ni productos nuevos en el día de hoy."
     else:
         prompt = f"""
-Actúa como analista de precios para una ferretería. 
+Actúa como analista de precios profesional para 'El Industrial'. 
 Sé MUY CONCISO. Reporte estilo Telegram. 
-USA SOLO LISTAS Y BOLD. No escribas introducciones ni "cuentitos".
+USA SOLO LISTAS Y BOLD. No escribas introducciones ni dramatismos bélicos.
 
 DATOS:
 - Cambios totales: {len(updated_items)}
@@ -78,17 +87,19 @@ DATOS:
 - Mayores aumentos detectados: {top_hikes}
 
 INSTRUCCIONES:
-1. ⚠️ **ADVERTENCIAS**: Menciona si una marca subió más de un 10% o si hubo cambios masivos sospechosos.
-2. 📈 **ESTADÍSTICAS**: Resumen rápido de aumentos promedios.
-3. 🕒 **CARGA**: Basado en datos, ¿cuándo fue la carga?
+1. ⚠️ **ADVERTENCIAS**: Menciona si una marca subió más de un 10% o si hubo cambios masivos de lista. Usa un tono sobrio.
+2. 📈 **ESTADÍSTICAS**: Resumen rápido de aumentos promedios y marcas afectadas.
+3. 🕒 **CARGA**: Indica la hora estimada de carga del proveedor basada en los datos.
 4. **FORMATO**: Usa <b>texto</b> para resaltar. No uses Markdown (* o _).
 """
         analysis = get_ai_analysis(prompt)
         # Limpiar posibles caracteres Markdown que la IA meta por inercia
         analysis = analysis.replace("*", "").replace("_", "")
     
-    fecha = datetime.now().strftime("%d/%m/%Y")
-    full_report = f"<b>🌙 REPORTE INDUSTRIAL - {fecha}</b>\n\n{analysis}"
+    now = datetime.now()
+    fecha = now.strftime("%d/%m/%Y")
+    hora = now.strftime("%H:%M")
+    full_report = f"<b>🌙 REPORTE INDUSTRIAL - {fecha} {hora}</b>\n\n{analysis}"
     
     if TELEGRAM_TOKEN and TELEGRAM_CHAT_ID:
         url_tg = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
@@ -106,4 +117,3 @@ INSTRUCCIONES:
 
 if __name__ == "__main__":
     main()
-
