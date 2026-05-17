@@ -23,7 +23,9 @@
 
 ### M1 — Migrar `validate_prices` y `analyze_prices` a tenant-aware
 
-- **status**: pending
+- **status**: completed
+- **done**: 2026-05-17
+- **commit**: (ver siguiente commit)
 - **prioridad**: ALTA (cierra deuda transitoria de Fase 2B)
 - **estimado**: 1-2h
 - **bloquea**: M2

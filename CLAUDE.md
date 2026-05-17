@@ -120,14 +120,23 @@ Cada cliente vive en `tenants/<slug>/` con su data, status, config y branding.
 `tenants/_registry.yml` es la fuente de verdad: slug, state, netlify_site_id,
 supplier.
 
-Pipeline iterando tenants:
+Pipeline iterando tenants (sin compat con root `data/` desde M1, 2026-05-17):
 - `update_products.py` itera tenants `state=active`. Para cada uno: carga
   supplier adapter desde `scripts/suppliers/`, credenciales (de
   `tenants/<slug>/.env` si existe, sino del `.env` raiz), config, fetcha,
-  diff, escribe `tenants/<slug>/data/lista_precio_*.gz` + accum.
+  diff, escribe `tenants/<slug>/data/lista_precio_*.gz` + accum. **No
+  escribe a `data/` ni a `status/daily_accum.json` del root.** El root
+  `status/` queda solo para cosas globales (heartbeat, metrics.jsonl,
+  alerts.jsonl).
 - `nightly_report.py` itera tenants. Para cada uno: lee
   `tenants/<slug>/status/daily_accum.json`, manda al canal del tenant
   (`tenants/<slug>/config/clients.yml`).
+- `validate_prices.py --tenant <slug>` (default: primer `active`) compara
+  el `.gz` de `tenants/<slug>/data/` con lo que devuelve el supplier del
+  tenant. Sin flag = primer active.
+- `analyze_prices.py --tenant <slug>` (default: primer `active`) auto-detecta
+  el último y anteúltimo `.gz` del tenant y genera reportes en
+  `reports/<slug>/`.
 - `scripts/suppliers/__init__.py` registry: `Bertual`, `Electronica Haedo`.
 
 ### Cómo agregar un proveedor nuevo

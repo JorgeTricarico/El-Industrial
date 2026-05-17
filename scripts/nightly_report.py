@@ -15,9 +15,6 @@ ENV_FILE = os.path.join(BASE_DIR, ".env")
 TENANTS_DIR = os.path.join(BASE_DIR, "tenants")
 REGISTRY = os.path.join(TENANTS_DIR, "_registry.yml")
 
-# Tenant primario que tambien lee accum del root (compat con update_products).
-PRIMARY_TENANT_SLUG = "el-industrial"
-
 load_dotenv(ENV_FILE)
 
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
@@ -311,15 +308,6 @@ def process_tenant_report(tenant):
 
     tenant_status_dir = os.path.join(TENANTS_DIR, slug, "status")
     accum_path = os.path.join(tenant_status_dir, "daily_accum.json")
-    # Compat transicional: el tenant primario puede no tener su accum aun
-    # si update_products no corrio con el codigo nuevo todavia. Caer al
-    # root accum en ese caso para no perder dia 1 de la migracion.
-    if not os.path.exists(accum_path) and slug == PRIMARY_TENANT_SLUG:
-        root_accum = os.path.join(STATUS_DIR, "daily_accum.json")
-        if os.path.exists(root_accum):
-            os.makedirs(tenant_status_dir, exist_ok=True)
-            accum_path = root_accum
-            log_metric("nightly_compat", f"{slug}: usando root accum por fallback")
     if not os.path.exists(accum_path):
         log_metric("nightly_skip", f"{slug}: sin daily_accum.json")
         result["status"] = "no_accum"
@@ -385,13 +373,6 @@ def main():
         log_metric("nightly_tenant_done",
                    f"{res['slug']} status={res['status']} items={res['items']} sent={res['sent']}")
         any_processed = True
-
-    # Compat: si el tenant primario aun deja accum en root status/, lo archivamos
-    # para que no quede acumulando dia a dia. (update_products escribe a ambos
-    # lugares durante Fase 2B transitoria.)
-    root_accum = os.path.join(STATUS_DIR, "daily_accum.json")
-    if os.path.exists(root_accum):
-        _archive_accum(root_accum, STATUS_DIR)
 
     if not any_processed:
         log_metric("nightly_skip", "ningun tenant active en _registry.yml")

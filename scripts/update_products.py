@@ -10,10 +10,6 @@ Bertual+root. Para cada tenant 'active':
   - Escribe tenants/<slug>/data/lista_precio_*.gz + latest-json-filename.txt
   - Acumula cambios en tenants/<slug>/status/daily_accum.json
 
-Backward compat: para el tenant 'el-industrial' tambien escribe a data/
-raiz + status/ raiz porque hay scripts/validate_prices.py y analyze que
-todavia leen de ahi. Eso se ira sacando cuando esos scripts se migren.
-
 Flags:
   --silent   no escribe gz a disco (solo procesa diff y acumula)
   --report   se preserva por compat con scripts viejos (no-op aca)
@@ -35,17 +31,10 @@ BASE_DIR = os.path.dirname(SCRIPT_DIR)
 TENANTS_DIR = os.path.join(BASE_DIR, "tenants")
 REGISTRY = os.path.join(TENANTS_DIR, "_registry.yml")
 
-# Root paths — compat para tenant primario (el-industrial). Cuando se migren
-# los consumers (validate_prices, analyze_prices) este bloque se va.
-LATEST_INDEX_FILE = os.path.join(BASE_DIR, "latest-json-filename.txt")
-REPORTS_DIR = os.path.join(BASE_DIR, "reports")
-DATA_DIR = os.path.join(BASE_DIR, "data")
+# Root status/ sigue siendo global: heartbeat, metrics.jsonl, alerts.jsonl.
+# Pero data/ y daily_accum.json son 100% per-tenant.
 STATUS_DIR = os.path.join(BASE_DIR, "status")
 ENV_FILE = os.path.join(BASE_DIR, ".env")
-CONFIG_FILE = os.path.join(BASE_DIR, "config.json")
-
-# Tenant cuyo data/ se mirrorea al root por compat. None = no mirror.
-PRIMARY_TENANT_SLUG = "el-industrial"
 
 load_dotenv(ENV_FILE)
 
@@ -365,22 +354,6 @@ def write_tenant_dataset(slug, new_items, silent=False):
     return rel_path, abs_path
 
 
-def write_root_compat(new_items, silent=False):
-    """Mirror al root data/ + latest-json-filename para tools legacy.
-    Solo para el tenant primario.
-    """
-    if silent:
-        return
-    os.makedirs(DATA_DIR, exist_ok=True)
-    filename = f"lista_precio_{datetime.now().strftime('%y-%m-%d')}_json_compres.gz"
-    rel_path = os.path.join("data", filename)
-    abs_path = os.path.join(BASE_DIR, rel_path)
-    with gzip.open(abs_path, "wt", encoding="utf-8") as f:
-        json.dump(new_items, f, indent=2, ensure_ascii=False)
-    with open(LATEST_INDEX_FILE, "w") as f:
-        f.write(rel_path)
-
-
 # -------- core: process_tenant --------
 
 def process_tenant(tenant, silent=False):
@@ -445,15 +418,7 @@ def process_tenant(tenant, silent=False):
     # accum per-tenant
     update_accumulator(changes, tenant_status_dir(slug))
 
-    # Para el tenant primario, mantener mirror al root status/daily_accum.json
-    # asi nightly_report (en modo legacy) sigue encontrando data hasta que
-    # se migre.
-    if slug == PRIMARY_TENANT_SLUG:
-        update_accumulator(changes, STATUS_DIR)
-
     rel, _ = write_tenant_dataset(slug, new_items, silent=silent)
-    if slug == PRIMARY_TENANT_SLUG:
-        write_root_compat(new_items, silent=silent)
 
     result["status"] = "ok"
     result["updates"] = len(changes["updated"])

@@ -216,7 +216,6 @@ def test_process_tenant_creds_missing(monkeypatch):
 def test_process_tenant_ok_end_to_end(tmp_path, monkeypatch):
     """Mock supplier que devuelve 150 items, process_tenant escribe gz + accum."""
     monkeypatch.setattr(update_products, "TENANTS_DIR", str(tmp_path / "tenants"))
-    monkeypatch.setattr(update_products, "PRIMARY_TENANT_SLUG", None)  # no compat mirror
 
     tenant_root = tmp_path / "tenants" / "alpha"
     (tenant_root / "config").mkdir(parents=True)
