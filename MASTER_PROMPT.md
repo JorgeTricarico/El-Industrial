@@ -80,7 +80,7 @@
 
 - **status**: completed
 - **done**: 2026-05-17
-- **commit**: (siguiente)
+- **commit**: b863ace
 - **prioridad**: ALTA (riesgo silencioso: disco Pi se llena en meses)
 - **estimado**: 1h
 
