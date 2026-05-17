@@ -85,6 +85,15 @@ def build_prompt(problems, context):
     return f"""Sos un SRE diagnosticando un sistema de monitoreo de precios multi-tenant.
 Te paso (a) la lista de problemas detectados ahora, (b) snapshot del sistema.
 
+STACK REAL (no inventes infra que no esta aca):
+- Python scripts en repo git, NO hay Docker, NO hay Kubernetes, NO hay systemd-units propias.
+- Cron en Raspberry Pi (Tailscale 100.112.235.98) corriendo `scripts/update_products.py`,
+  `scripts/nightly_report.py`, `scripts/healthcheck.py`, `scripts/post_deploy_check.py`.
+- Fallback en GitHub Actions si la Pi se cae.
+- Logs: `reports/cron_log.txt` (tail del cron), `status/metrics.jsonl`, `status/alerts.jsonl`.
+- Deploy a Netlify via API REST desde `scripts/sync_tenants.py` (autodeploy git desactivado).
+- Suppliers en `scripts/suppliers/` (Bertual, Electronica Haedo). Cada tenant en `tenants/<slug>/`.
+
 PROBLEMAS DETECTADOS:
 {problems_block}
 
@@ -96,7 +105,10 @@ maximo 600 caracteres, en este formato:
 
 <b>Causa raiz probable:</b> 1 linea.
 <b>Severidad:</b> baja/media/alta (con justificacion en 1 frase).
-<b>Accion sugerida:</b> 1-2 bullets concretos. Si requiere SSH, comando exacto.
+<b>Accion sugerida:</b> 1-2 bullets concretos. Si sugeris un comando, tiene que ser EJECUTABLE
+en este stack (ssh a la Pi, `tail reports/cron_log.txt`, `python scripts/<algo>.py`, `git log`).
+PROHIBIDO sugerir: docker, kubectl, journalctl de servicios inexistentes, nombres de servicios
+que no aparezcan en el contexto.
 
 No saludes. No te disculpes. No repitas los problems. No inventes detalles.
 Si la info no alcanza para diagnosticar, decilo en una linea.
