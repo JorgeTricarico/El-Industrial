@@ -145,3 +145,72 @@ def test_drift_silencioso_si_git_falla(_mock):
     """Si git no responde (sin red, sin git), no alertamos por eso."""
     hb = {"version": "cafe123", "node": "x"}
     assert healthcheck.detect_version_drift(hb) is None
+
+
+# ============ DETECCION DE SITIO PUBLICO CONGELADO ============
+
+def _write_registry(tmp_path, content):
+    d = tmp_path / "tenants"
+    d.mkdir(exist_ok=True)
+    (d / "_registry.yml").write_text(content)
+
+
+@patch('healthcheck.requests.get')
+def test_sitio_publico_actualizado_no_alerta(mock_get, tmp_path, monkeypatch):
+    """Si el pointer publico apunta al .gz de hoy, no debe alertar."""
+    from datetime import datetime
+    today = datetime.now().strftime("%y-%m-%d")
+    mock_resp = MagicMock(ok=True, text=f"data/lista_precio_{today}_json_compres.gz")
+    mock_get.return_value = mock_resp
+    monkeypatch.setattr(healthcheck, "BASE_DIR", str(tmp_path))
+    _write_registry(tmp_path, """
+tenants:
+  - slug: el-industrial
+    state: active
+    netlify_url: "https://el-industrial.netlify.app"
+""")
+    problems = healthcheck.detect_public_site_stale()
+    assert problems == []
+
+
+@patch('healthcheck.requests.get')
+def test_sitio_publico_congelado_alerta(mock_get, tmp_path, monkeypatch):
+    """Si el pointer publico apunta a un .gz de hace mucho, debe alertar."""
+    mock_resp = MagicMock(ok=True, text="data/lista_precio_26-04-26_json_compres.gz")
+    mock_get.return_value = mock_resp
+    monkeypatch.setattr(healthcheck, "BASE_DIR", str(tmp_path))
+    _write_registry(tmp_path, """
+tenants:
+  - slug: el-industrial
+    state: active
+    netlify_url: "https://el-industrial.netlify.app"
+""")
+    problems = healthcheck.detect_public_site_stale()
+    assert any("el-industrial" in p and "deploy a Netlify NO esta llegando" in p for p in problems), problems
+
+
+@patch('healthcheck.requests.get', side_effect=Exception("network down"))
+def test_sitio_publico_red_caida_se_reporta(_mock, tmp_path, monkeypatch):
+    monkeypatch.setattr(healthcheck, "BASE_DIR", str(tmp_path))
+    _write_registry(tmp_path, """
+tenants:
+  - slug: el-industrial
+    state: active
+    netlify_url: "https://el-industrial.netlify.app"
+""")
+    problems = healthcheck.detect_public_site_stale()
+    # Cualquier mensaje que mencione "el-industrial" cuenta como alerta
+    assert any("el-industrial" in p for p in problems)
+
+
+def test_sitio_publico_skip_tenants_inactive(tmp_path, monkeypatch):
+    """Tenants en estado inactive no se chequean."""
+    monkeypatch.setattr(healthcheck, "BASE_DIR", str(tmp_path))
+    _write_registry(tmp_path, """
+tenants:
+  - slug: pausado
+    state: inactive
+    netlify_url: "https://pausado.netlify.app"
+""")
+    problems = healthcheck.detect_public_site_stale()
+    assert problems == []

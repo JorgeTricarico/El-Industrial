@@ -142,9 +142,67 @@ def diagnose():
     if drift:
         problems.append(drift)
 
+    stale = detect_public_site_stale()
+    problems.extend(stale)
+
     if problems:
         return "alert", problems
     return "ok", []
+
+
+def detect_public_site_stale():
+    """Para cada tenant active/testing en _registry.yml, fetch su pointer publico
+    (https://<url>/latest-json-filename.txt) y compara con el pointer local del
+    repo. Si el publico apunta a un archivo mas viejo que THRESHOLD_HOURS, alerta.
+
+    Esto cubre el bug del 27/04-17/05 donde el sitio sirvio data congelada
+    porque los deploys de Netlify fallaban silenciosamente.
+    """
+    problems = []
+    registry = os.path.join(BASE_DIR, "tenants", "_registry.yml")
+    if not os.path.exists(registry):
+        return problems
+    try:
+        import yaml
+    except ImportError:
+        return problems
+    try:
+        with open(registry, "r", encoding="utf-8") as f:
+            data = yaml.safe_load(f) or {}
+    except (OSError, yaml.YAMLError):
+        return problems
+    for t in data.get("tenants", []):
+        if t.get("state") not in ("active", "testing"):
+            continue
+        url = t.get("netlify_url", "")
+        if not url.startswith("http"):
+            continue
+        try:
+            res = requests.get(url.rstrip("/") + "/latest-json-filename.txt", timeout=10)
+        except Exception as e:
+            problems.append(f"No se pudo consultar sitio de {t.get('slug')}: {type(e).__name__}.")
+            continue
+        if not res.ok:
+            problems.append(f"Sitio publico de {t.get('slug')} no responde (HTTP {res.status_code}).")
+            continue
+        public_filename = res.text.strip()
+        # Extraer la fecha del nombre del archivo: lista_precio_YY-MM-DD_...
+        import re
+        m = re.search(r"(\d{2}-\d{2}-\d{2})", public_filename)
+        if not m:
+            continue
+        yy, mm, dd = m.group(1).split("-")
+        try:
+            file_date = datetime.strptime(f"20{yy}-{mm}-{dd}", "%Y-%m-%d")
+        except ValueError:
+            continue
+        age_h = (datetime.now() - file_date).total_seconds() / 3600
+        if age_h > THRESHOLD_HOURS:
+            problems.append(
+                f"Sitio publico {t.get('slug')} sirve data del {file_date.date()} "
+                f"({age_h:.0f}h atras). El deploy a Netlify NO esta llegando."
+            )
+    return problems
 
 
 def send_alert(problems):
