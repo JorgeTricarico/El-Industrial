@@ -116,6 +116,15 @@ fi
 log_message "Sincronizando tenants (front + data mirror para testing)..."
 python3 "$SCRIPT_DIR/sync_tenants.py" >>"$LOG_FILE" 2>&1 || log_message "ADVERTENCIA: sync_tenants fallo, continuando."
 
+# Post-deploy check: verifica que cada sitio publico sirve los precios que la
+# Pi acaba de generar. Si difieren, alerta Telegram al admin inmediatamente.
+log_message "Post-deploy check: comparando webs publicas contra data local..."
+if python3 "$SCRIPT_DIR/post_deploy_check.py" >>"$LOG_FILE" 2>&1; then
+    log_message "Post-deploy OK: todos los sitios sirven la data del dia."
+else
+    log_message "ALERTA: post-deploy check fallo. Telegram enviado al admin. Revisar logs."
+fi
+
 log_message "Ejecutando reporte ejecutivo nocturno..."
 python3 "$SCRIPT_DIR/nightly_report.py"
 NR_EXIT_CODE=$?
