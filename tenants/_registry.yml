@@ -27,6 +27,7 @@ tenants:
   - slug: ferreteria-prueba
     name: "Ferreteria Prueba"
     state: testing
-    netlify_url: "(crear site en dashboard Netlify y pegar URL aqui)"
+    netlify_url: "https://ferreteria-prueba.netlify.app"
+    netlify_site_id: "6d19580e-4b8b-4973-9ddd-ff306eff46db"
     bertual_account: "(no aplica - usa data espejo de el-industrial)"
-    notes: "Tenant de validacion del refactor multi-tenant. Comparte data con el-industrial hasta que tenga su propia API Bertual."
+    notes: "Tenant de validacion. Auto-deploy a Netlify desde sync_tenants si hay NETLIFY_AUTH_TOKEN en .env."

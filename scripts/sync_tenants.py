@@ -9,10 +9,12 @@
 Se llama desde run_daily.sh al final del flow para que cada cron actualice
 todos los Netlify sites con el ultimo HEAD del repo.
 """
+import io
 import json
 import os
 import shutil
 import sys
+import zipfile
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 BASE_DIR = os.path.dirname(SCRIPT_DIR)
@@ -107,11 +109,45 @@ def mirror_data_to_testing_tenant(tenant_slug, tenant_dir):
     return True
 
 
+def deploy_to_netlify(tenant_dir, site_id, token):
+    """Sube el contenido de tenant_dir como un nuevo deploy a Netlify.
+    Retorna (ok, message). Silently skip si falta token o site_id.
+    """
+    if not token or not site_id:
+        return (False, "sin token o site_id")
+    try:
+        import requests
+    except ImportError:
+        return (False, "requests no instalado")
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+        for root, _dirs, files in os.walk(tenant_dir):
+            for f in files:
+                p = os.path.join(root, f)
+                z.write(p, os.path.relpath(p, tenant_dir))
+    buf.seek(0)
+
+    url = f"https://api.netlify.com/api/v1/sites/{site_id}/deploys"
+    headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/zip"}
+    try:
+        res = requests.post(url, headers=headers, data=buf.read(), timeout=120)
+    except requests.RequestException as e:
+        return (False, f"{type(e).__name__}: {e}")
+
+    if not res.ok:
+        return (False, f"HTTP {res.status_code}: {res.text[:200]}")
+    body = res.json()
+    return (True, f"deploy_id={body.get('id')} state={body.get('state')}")
+
+
 def main():
     tenants = load_registry()
     if not tenants:
         print("[sync_tenants] No hay tenants en _registry.yml")
         return 0
+
+    netlify_token = os.environ.get("NETLIFY_AUTH_TOKEN", "")
 
     for t in tenants:
         slug = t.get("slug")
@@ -129,6 +165,12 @@ def main():
         if state == "testing":
             ok = mirror_data_to_testing_tenant(slug, tenant_dir)
             print(f"[sync_tenants] {slug}: data mirror = {ok}")
+
+        site_id = t.get("netlify_site_id")
+        if site_id and netlify_token:
+            ok, msg = deploy_to_netlify(tenant_dir, site_id, netlify_token)
+            tag = "OK" if ok else "FAIL"
+            print(f"[sync_tenants] {slug}: netlify deploy {tag} - {msg}")
 
     return 0
 
