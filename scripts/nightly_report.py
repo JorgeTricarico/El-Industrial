@@ -135,31 +135,66 @@ def sanitize_html(text):
     return text.strip()
 
 
-def send_telegram(message):
-    if not (TELEGRAM_TOKEN and TELEGRAM_CHAT_ID):
-        log_metric("telegram_skip", "credenciales ausentes")
-        return False
+def _send_to_chat(chat_id, message, name=""):
+    """Envia un mensaje a un solo chat_id, con fallback HTML -> plano.
+    Retorna True si Telegram acepto el mensaje en alguno de los dos formatos.
+    """
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
-    payload = {"chat_id": TELEGRAM_CHAT_ID, "text": message, "parse_mode": "HTML", "disable_web_page_preview": True}
+    payload = {"chat_id": chat_id, "text": message, "parse_mode": "HTML", "disable_web_page_preview": True}
     try:
         res = requests.post(url, data=payload, timeout=20)
         if res.ok:
-            log_metric("telegram_sent", "html")
+            log_metric("telegram_sent", f"html to={name}({chat_id})")
             return True
-        log_metric("telegram_html_fail", f"{res.status_code}: {res.text[:200]}")
+        log_metric("telegram_html_fail", f"{name}({chat_id}) {res.status_code}: {res.text[:200]}")
     except requests.RequestException as e:
-        log_metric("telegram_html_fail", f"{type(e).__name__}: {e}")
-    # Fallback a texto plano (si Telegram rechazo el HTML)
+        log_metric("telegram_html_fail", f"{name}({chat_id}) {type(e).__name__}: {e}")
     plain = message.replace("<b>", "").replace("</b>", "").replace("<i>", "").replace("</i>", "")
     try:
-        res = requests.post(url, data={"chat_id": TELEGRAM_CHAT_ID, "text": plain}, timeout=20)
+        res = requests.post(url, data={"chat_id": chat_id, "text": plain}, timeout=20)
         if res.ok:
-            log_metric("telegram_sent", "plain")
+            log_metric("telegram_sent", f"plain to={name}({chat_id})")
             return True
-        log_metric("telegram_plain_fail", f"{res.status_code}: {res.text[:200]}")
+        log_metric("telegram_plain_fail", f"{name}({chat_id}) {res.status_code}: {res.text[:200]}")
     except requests.RequestException as e:
-        log_metric("telegram_plain_fail", f"{type(e).__name__}: {e}")
+        log_metric("telegram_plain_fail", f"{name}({chat_id}) {type(e).__name__}: {e}")
     return False
+
+
+def send_telegram(message):
+    """Broadcast a todos los destinatarios habilitados como report (admin + client)
+    en config/clients.yml. Si no hay archivo, usa TELEGRAM_CHAT_ID del .env (legacy).
+    Retorna True si llego al menos a un destinatario.
+    """
+    if not TELEGRAM_TOKEN:
+        log_metric("telegram_skip", "TELEGRAM_TOKEN ausente")
+        return False
+    # Import perezoso para no crear dependencia circular con tests.
+    sys_path_added = False
+    try:
+        import clients as _clients_mod  # noqa: F401
+    except ImportError:
+        import sys
+        sys.path.insert(0, SCRIPT_DIR)
+        sys_path_added = True
+        import clients as _clients_mod
+    finally:
+        if sys_path_added:
+            import sys
+            if SCRIPT_DIR in sys.path:
+                sys.path.remove(SCRIPT_DIR)
+
+    recipients = _clients_mod.recipients_for("report", legacy_chat_id=TELEGRAM_CHAT_ID)
+    if not recipients:
+        log_metric("telegram_skip", "sin destinatarios configurados")
+        return False
+
+    sent_count = 0
+    for chat_id, name in recipients:
+        if _send_to_chat(chat_id, message, name=name):
+            sent_count += 1
+    log_metric("telegram_broadcast", f"sent={sent_count}/{len(recipients)}")
+    return sent_count > 0
 
 
 def build_prompt(updated_items, top_brands, top_hikes):

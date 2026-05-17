@@ -148,20 +148,38 @@ def diagnose():
 
 
 def send_alert(problems):
-    if not (TELEGRAM_TOKEN and TELEGRAM_CHAT_ID):
-        print("[telegram] credenciales ausentes. No se puede alertar.", file=sys.stderr)
+    """Envia alerta SOLO a los destinatarios con role=admin habilitados.
+    Las alertas tecnicas no van a los clientes pagos.
+    """
+    if not TELEGRAM_TOKEN:
+        print("[telegram] TELEGRAM_TOKEN ausente. No se puede alertar.", file=sys.stderr)
         return False
+    sys.path.insert(0, SCRIPT_DIR)
+    try:
+        import clients as _clients_mod
+    finally:
+        if SCRIPT_DIR in sys.path:
+            sys.path.remove(SCRIPT_DIR)
+    recipients = _clients_mod.recipients_for("alert", legacy_chat_id=TELEGRAM_CHAT_ID)
+    if not recipients:
+        print("[telegram] sin destinatarios admin configurados.", file=sys.stderr)
+        return False
+
     now = datetime.now().strftime("%d/%m/%Y %H:%M")
     body = f"🔧 <b>El Industrial — chequeo {now}</b>\nNodo: {HOST}\n\n"
     body += "\n".join(f"• {p}" for p in problems)
     body += "\n\nRevisar logs en <code>reports/cron_log.txt</code> y <code>status/metrics.jsonl</code>."
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
-    try:
-        res = requests.post(url, data={"chat_id": TELEGRAM_CHAT_ID, "text": body, "parse_mode": "HTML"}, timeout=15)
-        return res.ok
-    except requests.RequestException as e:
-        print(f"[telegram] fallo: {e}", file=sys.stderr)
-        return False
+
+    sent_count = 0
+    for chat_id, _name in recipients:
+        try:
+            res = requests.post(url, data={"chat_id": chat_id, "text": body, "parse_mode": "HTML"}, timeout=15)
+            if res.ok:
+                sent_count += 1
+        except requests.RequestException as e:
+            print(f"[telegram] fallo a {chat_id}: {e}", file=sys.stderr)
+    return sent_count > 0
 
 
 def main():

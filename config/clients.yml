@@ -1,0 +1,45 @@
+# Lista de destinatarios del servicio.
+#
+# CADA ENTRADA representa una persona o grupo que recibe mensajes via Telegram.
+#
+# CAMPOS:
+#   name              Nombre legible (solo para vos, no se envia).
+#   telegram_chat_id  ID numerico del chat de Telegram. Para obtenerlo, el
+#                     destinatario debe escribirle primero al bot
+#                     @jorgetrica_camera_bot (clic en "Start") y vos miras el
+#                     ID con: curl "https://api.telegram.org/bot<TOKEN>/getUpdates"
+#   enabled           true = recibe mensajes. false = pausado (para piloto / test).
+#   role              "admin"  -> recibe TODO: reporte comercial + alertas tecnicas.
+#                                 Usalo para vos y devs del equipo.
+#                     "client" -> SOLO recibe el reporte comercial nocturno.
+#                                 NO recibe alertas tecnicas (healthcheck).
+#                                 Usalo para clientes pagos.
+#   notes             Comentario libre (tier, fecha alta, etc.). Opcional.
+#
+# COMPORTAMIENTO:
+#   - nightly_report.py    -> envia a todos los enabled con role in (admin, client)
+#   - healthcheck.py       -> envia SOLO a enabled con role == admin
+#   - Si un envio falla a un destinatario, sigue con los demas (no aborta).
+#   - Si este archivo no existe o esta vacio, se usa el TELEGRAM_CHAT_ID
+#     del .env como unico destinatario (modo legacy / single tenant).
+#
+# COMO AGREGAR UN CLIENTE NUEVO:
+#   1. Pedile al cliente que abra @jorgetrica_camera_bot en Telegram y haga clic
+#      en "Start" (sin esto, el bot no puede escribirle).
+#   2. Obtene su chat_id (ver "getUpdates" arriba).
+#   3. Agregale una entrada con role: client, enabled: false al principio.
+#   4. Cuando confirmes que esta todo bien (precio acordado, onboarding hecho),
+#      cambia a enabled: true. Esa misma noche empieza a recibir el reporte.
+
+clients:
+  - name: "Jorge dev (interno)"
+    telegram_chat_id: 6425231391
+    enabled: true
+    role: admin
+    notes: "Cuenta personal. Recibe reportes (para ver que llega al cliente) + alertas tecnicas."
+
+  - name: "El Industrial (piloto)"
+    telegram_chat_id: 0
+    enabled: false
+    role: client
+    notes: "PENDIENTE: pegar chat_id real y poner enabled: true cuando esten las condiciones acordadas."
