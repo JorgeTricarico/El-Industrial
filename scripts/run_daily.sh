@@ -160,7 +160,27 @@ if [[ -n $(git status -s) ]]; then
         git remote set-url origin "https://x-access-token:${GITHUB_TOKEN}@github.com/JorgeTricarico/El-Industrial.git"
     fi
     
-    git add .
+    # SAFETY: stagear SOLO paths esperados, jamas `git add .` que podria
+    # incluir .env.backup, dumps, credenciales que alguien dejo a mano.
+    # Si .gitignore se rompe, este whitelist es la segunda red.
+    git add \
+        data/ \
+        tenants/*/data/ \
+        tenants/*/latest-json-filename.txt \
+        tenants/*/latest-json-filename.json \
+        latest-json-filename.txt \
+        latest-json-filename.json \
+        status/heartbeat.json \
+        2>/dev/null || true
+
+    # Tripwire pre-commit: si por error queda staged algo que parece secreto
+    # (.env*, *secret*, *credential*, *.pem), abortar antes de commitear.
+    if git diff --cached --name-only | grep -iE '(^|/)\.env|secret|credential|\.pem$|\.key$'; then
+        log_message "ERROR: archivo sensible staged. Abortando commit. Revisar staging."
+        git reset HEAD
+        exit 1
+    fi
+
     git commit -m "Actualizacion automatica de precios: $(date +%d/%m/%Y) [$HOSTNAME] $TODAY_TAG [skip ci]"
     
     # Intento de Push con reintentos
