@@ -123,14 +123,13 @@ def test_check_env_keys_skips_testing_state(monkeypatch, tmp_path):
 def test_check_node_heartbeats_missing(monkeypatch, tmp_path):
     monkeypatch.setattr(system_audit, "STATUS_DIR", str(tmp_path))
     problems = system_audit.check_node_heartbeats()
-    assert any("no existe" in p for p in problems)
+    assert any("sin nodos" in p or "no existe" in p or "ningun" in p for p in problems)
 
 
 def test_check_node_heartbeats_fresh(monkeypatch, tmp_path):
     hb = tmp_path / "heartbeat.json"
     hb.write_text(json.dumps({
-        "last_run": datetime.now().isoformat(),
-        "node": "pi",
+        "nodes": {"pi": {"last_run": datetime.now().isoformat()}}
     }))
     monkeypatch.setattr(system_audit, "STATUS_DIR", str(tmp_path))
     assert system_audit.check_node_heartbeats() == []
@@ -139,12 +138,43 @@ def test_check_node_heartbeats_fresh(monkeypatch, tmp_path):
 def test_check_node_heartbeats_stale(monkeypatch, tmp_path):
     hb = tmp_path / "heartbeat.json"
     old = (datetime.now() - timedelta(days=15)).isoformat()
-    hb.write_text(json.dumps({"last_run": old, "node": "pi"}))
+    hb.write_text(json.dumps({"nodes": {"pi": {"last_run": old}}}))
     monkeypatch.setattr(system_audit, "STATUS_DIR", str(tmp_path))
     monkeypatch.setattr(system_audit, "NODE_OFFLINE_DAYS", 7)
     problems = system_audit.check_node_heartbeats()
     assert len(problems) == 1
     assert "15d" in problems[0]
+
+
+def test_check_node_heartbeats_alerts_only_offline_nodes(monkeypatch, tmp_path):
+    """Si nodo A esta fresh y B caido hace 15d, alerta SOLO de B."""
+    hb = tmp_path / "heartbeat.json"
+    old = (datetime.now() - timedelta(days=15)).isoformat()
+    fresh = datetime.now().isoformat()
+    hb.write_text(json.dumps({
+        "nodes": {
+            "pi": {"last_run": fresh},
+            "mint": {"last_run": old},
+        }
+    }))
+    monkeypatch.setattr(system_audit, "STATUS_DIR", str(tmp_path))
+    monkeypatch.setattr(system_audit, "NODE_OFFLINE_DAYS", 7)
+    problems = system_audit.check_node_heartbeats()
+    assert len(problems) == 1
+    assert "mint" in problems[0]
+    assert "pi" not in problems[0].split("nodo")[1].split("hace")[0]
+
+
+def test_check_node_heartbeats_legacy_schema(monkeypatch, tmp_path):
+    """Heartbeat formato legacy se normaliza."""
+    hb = tmp_path / "heartbeat.json"
+    old = (datetime.now() - timedelta(days=15)).isoformat()
+    hb.write_text(json.dumps({"last_run": old, "node": "old_pi"}))
+    monkeypatch.setattr(system_audit, "STATUS_DIR", str(tmp_path))
+    monkeypatch.setattr(system_audit, "NODE_OFFLINE_DAYS", 7)
+    problems = system_audit.check_node_heartbeats()
+    assert len(problems) == 1
+    assert "old_pi" in problems[0]
 
 
 def test_check_archive_stale_finds_old_files(monkeypatch, tmp_path):

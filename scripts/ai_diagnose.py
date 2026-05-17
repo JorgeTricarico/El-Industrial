@@ -37,14 +37,12 @@ def collect_context(max_log_lines=15, max_metrics=10):
         ).decode().strip()
     except Exception:
         ctx["git_head"] = "unknown"
-    # Heartbeat
-    hb_path = os.path.join(STATUS_DIR, "heartbeat.json")
-    if os.path.exists(hb_path):
-        try:
-            with open(hb_path, "r", encoding="utf-8") as f:
-                ctx["heartbeat"] = json.load(f)
-        except Exception:
-            ctx["heartbeat"] = None
+    # Heartbeat (schema multi-nodo)
+    try:
+        import heartbeat_io
+        ctx["heartbeat"] = heartbeat_io.read(STATUS_DIR)
+    except Exception:
+        ctx["heartbeat"] = None
     # Cron log tail
     log_path = os.path.join(BASE_DIR, "reports", "cron_log.txt")
     if os.path.exists(log_path):

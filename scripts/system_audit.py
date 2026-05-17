@@ -148,32 +148,36 @@ def check_env_keys(tenants):
 
 
 def check_node_heartbeats():
-    """Lee status/heartbeat.json y reporta si el ultimo run es > N dias atras.
-    Solo trackeamos 1 heartbeat por ahora (el ultimo nodo que corrio). En
-    el futuro: rotar a heartbeats per-node."""
+    """Itera nodos en status/heartbeat.json y alerta de cada nodo cuyo
+    last_run sea > N dias atras. Schema multi-nodo (M4, 2026-05-17).
+    """
     problems = []
-    path = os.path.join(STATUS_DIR, "heartbeat.json")
-    if not os.path.exists(path):
-        return [f"status/heartbeat.json no existe — ningun nodo reporto aun"]
+    sys.path.insert(0, SCRIPT_DIR)
     try:
-        with open(path, "r", encoding="utf-8") as f:
-            hb = json.load(f)
-    except (OSError, json.JSONDecodeError) as e:
-        return [f"status/heartbeat.json ilegible: {e}"]
-    last = hb.get("last_run")
-    node = hb.get("node", "?")
-    if not last:
-        return [f"heartbeat sin campo last_run (nodo {node})"]
-    try:
-        dt = datetime.fromisoformat(last)
-    except ValueError:
-        return [f"heartbeat last_run no parseable: {last!r}"]
-    days = (datetime.now() - dt).days
-    if days > NODE_OFFLINE_DAYS:
-        problems.append(
-            f"heartbeat: ultimo run nodo {node} hace {days}d "
-            f"(umbral {NODE_OFFLINE_DAYS}d). Posible nodo caido."
-        )
+        import heartbeat_io
+    finally:
+        if SCRIPT_DIR in sys.path:
+            sys.path.remove(SCRIPT_DIR)
+    hb = heartbeat_io.read(STATUS_DIR)
+    nodes = hb.get("nodes", {})
+    if not nodes:
+        return ["status/heartbeat.json sin nodos — ningun nodo reporto aun"]
+    for node, entry in nodes.items():
+        last = entry.get("last_run")
+        if not last:
+            problems.append(f"heartbeat sin campo last_run (nodo {node})")
+            continue
+        try:
+            dt = datetime.fromisoformat(last)
+        except ValueError:
+            problems.append(f"heartbeat last_run no parseable: {last!r} (nodo {node})")
+            continue
+        days = (datetime.now() - dt).days
+        if days > NODE_OFFLINE_DAYS:
+            problems.append(
+                f"heartbeat: ultimo run nodo {node} hace {days}d "
+                f"(umbral {NODE_OFFLINE_DAYS}d). Posible nodo caido."
+            )
     return problems
 
 

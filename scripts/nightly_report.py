@@ -264,17 +264,11 @@ def _compute_stats(updated_items):
 def _update_telegram_heartbeat(provider, status_dir):
     """Dead-man-switch: registra que el mensaje se envio."""
     try:
-        hb_path = os.path.join(status_dir, "heartbeat.json")
-        hb = {}
-        if os.path.exists(hb_path):
-            with open(hb_path, "r", encoding="utf-8") as f:
-                hb = json.load(f)
-        hb["last_telegram_iso"] = datetime.now().isoformat()
-        hb["last_telegram_provider"] = provider
-        os.makedirs(status_dir, exist_ok=True)
-        with open(hb_path, "w", encoding="utf-8") as f:
-            json.dump(hb, f, indent=2)
-    except (OSError, json.JSONDecodeError) as e:
+        import sys as _sys
+        _sys.path.insert(0, SCRIPT_DIR)
+        import heartbeat_io
+        heartbeat_io.update_telegram(status_dir, provider, datetime.now().isoformat())
+    except (OSError, ImportError) as e:
         log_metric("heartbeat_update_fail", f"{type(e).__name__}: {e}")
 
 

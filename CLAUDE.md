@@ -171,6 +171,16 @@ Why: cuando se sumen clientes pagos, no comparten chat con el dev/ops.
 Si no seteas la var, comportamiento legacy se mantiene (alerts → admins
 del yaml).
 
+## Heartbeat multi-nodo
+
+`status/heartbeat.json` ahora es `{"nodes": {<node_name>: {...}},
+"last_telegram_iso": ..., "last_telegram_provider": ...}`. Cada nodo
+(Raspberry Pi, Linux Mint, GH Actions) mergea su propia entrada via
+`scripts/heartbeat_io.write_node()` sin pisar a los otros. `last_telegram_*`
+es global (cualquier nodo manda el reporte). `system_audit.check_node_heartbeats()`
+itera nodos y alerta de cada uno que esté `> NODE_OFFLINE_DAYS` sin reportar.
+Schema legacy single-node se normaliza al leer (migración transparente).
+
 ## Rotación de logs append-only
 
 `status/metrics.jsonl` y `reports/cron_log.txt` se appendean cada corrida.

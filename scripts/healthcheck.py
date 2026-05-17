@@ -29,15 +29,17 @@ HOST = socket.gethostname()
 
 
 def read_heartbeat():
-    path = os.path.join(STATUS_DIR, "heartbeat.json")
-    if not os.path.exists(path):
-        return None
+    """Lee heartbeat normalizado al schema multi-nodo. None si no existe."""
+    sys.path.insert(0, SCRIPT_DIR)
     try:
-        with open(path, "r", encoding="utf-8") as f:
-            return json.load(f)
-    except (OSError, json.JSONDecodeError) as e:
-        print(f"[heartbeat] no se pudo leer: {e}", file=sys.stderr)
+        import heartbeat_io
+    finally:
+        if SCRIPT_DIR in sys.path:
+            sys.path.remove(SCRIPT_DIR)
+    hb = heartbeat_io.read(STATUS_DIR)
+    if not hb.get("nodes") and "last_telegram_iso" not in hb:
         return None
+    return hb
 
 
 def hours_since(iso_ts):
@@ -73,16 +75,16 @@ def last_n_runs(n=3):
 
 
 def detect_version_drift(heartbeat):
-    """Compara heartbeat.version con origin/main. Devuelve mensaje si hay drift, None si OK.
+    """Compara la version de CADA nodo en el heartbeat con origin/main.
 
-    Hace git fetch para tener origin/main al dia. Si falla la red o git, retorna None
-    silenciosamente — no queremos alertar por problemas de conectividad transitorios.
+    Hace git fetch una vez y compara. Devuelve lista de mensajes (uno por nodo
+    con drift). Si falla la red o git, retorna [] silenciosamente.
     """
-    if not heartbeat or "version" not in heartbeat:
-        return None
-    node_ver = heartbeat.get("version", "")
-    if not node_ver or node_ver == "unknown":
-        return None
+    if not heartbeat:
+        return []
+    nodes = heartbeat.get("nodes", {})
+    if not nodes:
+        return []
     try:
         subprocess.check_call(
             ["git", "-C", BASE_DIR, "fetch", "origin", "--quiet"],
@@ -93,16 +95,20 @@ def detect_version_drift(heartbeat):
             timeout=5, stderr=subprocess.DEVNULL,
         ).decode().strip()
     except (subprocess.CalledProcessError, subprocess.TimeoutExpired, FileNotFoundError, OSError):
-        return None
+        return []
     if not remote_ver:
-        return None
-    # Comparar prefijos (corto vs corto). Si difieren, hay drift.
-    if not (node_ver.startswith(remote_ver) or remote_ver.startswith(node_ver)):
-        return (
-            f"Drift de version: el nodo '{heartbeat.get('node', '?')}' corrio HEAD={node_ver} "
-            f"pero origin/main esta en {remote_ver}. El nodo no esta pulleando."
-        )
-    return None
+        return []
+    drifts = []
+    for name, entry in nodes.items():
+        node_ver = entry.get("version", "")
+        if not node_ver or node_ver == "unknown":
+            continue
+        if not (node_ver.startswith(remote_ver) or remote_ver.startswith(node_ver)):
+            drifts.append(
+                f"Drift de version: el nodo '{name}' corrio HEAD={node_ver} "
+                f"pero origin/main esta en {remote_ver}. El nodo no esta pulleando."
+            )
+    return drifts
 
 
 def diagnose():
@@ -110,21 +116,33 @@ def diagnose():
     problems = []
 
     hb = read_heartbeat()
-    if hb is None:
-        problems.append("Sin heartbeat.json. El sistema nunca corrio o el archivo se perdio.")
+    if hb is None or not hb.get("nodes"):
+        problems.append("Sin heartbeat. Ningun nodo reporto aun.")
     else:
-        age = hours_since(hb.get("last_run", ""))
-        if age is None:
-            problems.append(f"heartbeat.last_run invalido: {hb.get('last_run')!r}")
-        elif age > THRESHOLD_HOURS:
-            problems.append(f"Heartbeat viejo: {age:.1f}h (umbral {THRESHOLD_HOURS}h). Ultimo nodo: {hb.get('node', '?')}.")
+        # Multi-nodo: si TODOS los nodos tienen last_run > umbral, alertamos.
+        # Si al menos uno corrio reciente, OK (el sistema esta vivo aunque
+        # alguno del clúster este caido — eso lo cubre system_audit).
+        ages = []
+        for name, entry in hb["nodes"].items():
+            age = hours_since(entry.get("last_run", ""))
+            if age is not None:
+                ages.append((name, age, entry.get("status", "ok")))
+        if not ages:
+            problems.append("heartbeat: ningun nodo con last_run parseable.")
+        else:
+            min_age_node, min_age, _ = min(ages, key=lambda x: x[1])
+            if min_age > THRESHOLD_HOURS:
+                detail = ", ".join(f"{n}:{a:.1f}h" for n, a, _ in ages)
+                problems.append(
+                    f"Heartbeat viejo: nodo mas reciente ({min_age_node}) hace {min_age:.1f}h "
+                    f"(umbral {THRESHOLD_HOURS}h). Detalle: {detail}."
+                )
+            # Status no-ok en el ultimo run de cada nodo
+            for name, _age, status in ages:
+                if status != "ok":
+                    problems.append(f"Ultima corrida con status='{status}' (nodo {name}).")
 
-        status = hb.get("status", "ok")
-        if status != "ok":
-            problems.append(f"Ultima corrida con status='{status}' (nodo {hb.get('node', '?')}).")
-
-        # Dead-man-switch: verificar que el Telegram efectivamente se envio.
-        # Es posible que update_products corra ok pero el envio a Telegram falle.
+        # Dead-man-switch: telegram global (cualquier nodo lo manda)
         tg_iso = hb.get("last_telegram_iso")
         if tg_iso:
             tg_age = hours_since(tg_iso)
@@ -138,9 +156,7 @@ def diagnose():
     if last_runs and all(r.get("api") == "api_fail" for r in last_runs):
         problems.append(f"Las ultimas {len(last_runs)} corridas fallaron contra la API Bertual.")
 
-    drift = detect_version_drift(hb)
-    if drift:
-        problems.append(drift)
+    problems.extend(detect_version_drift(hb))
 
     stale = detect_public_site_stale()
     problems.extend(stale)

@@ -11,7 +11,6 @@ modificar update_products en una corrida real. Solo agrega/actualiza:
   - version            (HEAD corto actual)
   - last_pulled_iso    (timestamp del ultimo pull exitoso)
 """
-import json
 import os
 import socket
 import subprocess
@@ -21,7 +20,9 @@ from datetime import datetime
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 BASE_DIR = os.path.dirname(SCRIPT_DIR)
 STATUS_DIR = os.path.join(BASE_DIR, "status")
-HB_PATH = os.path.join(STATUS_DIR, "heartbeat.json")
+
+sys.path.insert(0, SCRIPT_DIR)
+import heartbeat_io  # noqa: E402
 
 
 def short_head():
@@ -36,19 +37,11 @@ def short_head():
 
 def main():
     head = short_head()
-    hb = {}
-    if os.path.exists(HB_PATH):
-        try:
-            with open(HB_PATH, "r", encoding="utf-8") as f:
-                hb = json.load(f)
-        except (OSError, json.JSONDecodeError):
-            hb = {}
-    hb["version"] = head
-    hb.setdefault("node", socket.gethostname())
-    hb["last_pulled_iso"] = datetime.now().isoformat()
-    os.makedirs(STATUS_DIR, exist_ok=True)
-    with open(HB_PATH, "w", encoding="utf-8") as f:
-        json.dump(hb, f, indent=2)
+    node = socket.gethostname()
+    heartbeat_io.write_node(STATUS_DIR, node, {
+        "version": head,
+        "last_pulled_iso": datetime.now().isoformat(),
+    })
     print(f"[refresh_heartbeat] version={head}")
     return 0
 

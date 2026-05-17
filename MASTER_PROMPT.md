@@ -100,7 +100,9 @@
 
 ### M4 — Heartbeat por nodo (no global)
 
-- **status**: pending
+- **status**: completed
+- **done**: 2026-05-17
+- **commit**: (siguiente)
 - **prioridad**: MEDIA
 - **estimado**: 1h
 

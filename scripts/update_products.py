@@ -56,18 +56,17 @@ def _git_head_short():
 
 
 def update_heartbeat(host, status="ok", duration_s=0):
-    """Heartbeat global (no por tenant). Sigue en root status/."""
-    os.makedirs(STATUS_DIR, exist_ok=True)
-    payload = {
+    """Heartbeat multi-nodo. Mergea la entrada de `host` sin pisar otros nodos.
+    Sigue en root status/ (no per-tenant)."""
+    import heartbeat_io
+    fields = {
         "last_run": datetime.now().isoformat(),
-        "node": host,
         "status": status,
         "duration_s": round(duration_s, 2),
         "version": _git_head_short(),
     }
     try:
-        with open(os.path.join(STATUS_DIR, "heartbeat.json"), "w") as f:
-            json.dump(payload, f, indent=2)
+        heartbeat_io.write_node(STATUS_DIR, host, fields)
     except OSError as e:
         print(f"[heartbeat] error escribiendo: {e}", file=sys.stderr)
 

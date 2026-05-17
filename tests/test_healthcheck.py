@@ -116,14 +116,14 @@ def test_send_alert_no_credenciales_devuelve_false():
 @patch('healthcheck.subprocess.check_output')
 @patch('healthcheck.subprocess.check_call')
 def test_drift_detecta_version_distinta(mock_call, mock_out):
-    """Si heartbeat.version != origin/main, debe reportar drift."""
+    """Si la version de algun nodo != origin/main, debe reportar drift."""
     mock_call.return_value = 0
     mock_out.return_value = b"deadbee\n"
-    hb = {"version": "cafe123", "node": "raspberrypi"}
-    msg = healthcheck.detect_version_drift(hb)
-    assert msg is not None
-    assert "cafe123" in msg and "deadbee" in msg
-    assert "raspberrypi" in msg
+    hb = {"nodes": {"raspberrypi": {"version": "cafe123"}}}
+    drifts = healthcheck.detect_version_drift(hb)
+    assert len(drifts) == 1
+    assert "cafe123" in drifts[0] and "deadbee" in drifts[0]
+    assert "raspberrypi" in drifts[0]
 
 
 @patch('healthcheck.subprocess.check_output')
@@ -131,21 +131,21 @@ def test_drift_detecta_version_distinta(mock_call, mock_out):
 def test_drift_silencioso_si_versiones_coinciden(mock_call, mock_out):
     mock_call.return_value = 0
     mock_out.return_value = b"cafe123\n"
-    hb = {"version": "cafe123", "node": "raspberrypi"}
-    assert healthcheck.detect_version_drift(hb) is None
+    hb = {"nodes": {"raspberrypi": {"version": "cafe123"}}}
+    assert healthcheck.detect_version_drift(hb) == []
 
 
 def test_drift_silencioso_si_heartbeat_sin_version():
-    """Heartbeats viejos (pre-cambio) no tienen 'version'; no alertar."""
-    assert healthcheck.detect_version_drift({"node": "x"}) is None
-    assert healthcheck.detect_version_drift(None) is None
+    """Heartbeats sin version: no alertar."""
+    assert healthcheck.detect_version_drift({"nodes": {}}) == []
+    assert healthcheck.detect_version_drift(None) == []
 
 
 @patch('healthcheck.subprocess.check_call', side_effect=FileNotFoundError("git no instalado"))
 def test_drift_silencioso_si_git_falla(_mock):
     """Si git no responde (sin red, sin git), no alertamos por eso."""
-    hb = {"version": "cafe123", "node": "x"}
-    assert healthcheck.detect_version_drift(hb) is None
+    hb = {"nodes": {"x": {"version": "cafe123"}}}
+    assert healthcheck.detect_version_drift(hb) == []
 
 
 # ============ DETECCION DE SITIO PUBLICO CONGELADO ============
