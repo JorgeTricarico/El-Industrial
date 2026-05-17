@@ -377,6 +377,15 @@ def main():
     if not any_processed:
         log_metric("nightly_skip", "ningun tenant active en _registry.yml")
 
+    # GC de logs append-only (1x/dia, despues de mandar los reportes).
+    try:
+        import log_rotation
+        for res in log_rotation.rotate_all():
+            if res["rotated"]:
+                log_metric("log_rotated", f"{res['path']} -> {res['archive_path']}")
+    except Exception as e:
+        log_metric("log_rotation_fail", f"{type(e).__name__}: {e}")
+
 
 def prune_old_archives(archive_dir, days=90):
     """Borra archivos de archive_dir con mtime > N dias. Retorna cantidad eliminada."""

@@ -303,6 +303,32 @@ def check_netlify_build_settings(tenants, token=None):
     return problems
 
 
+LOG_SIZE_WARN_MB = float(os.getenv("LOG_SIZE_WARN_MB", "100"))
+
+
+def check_log_sizes():
+    """Reporta archivos append-only que crecieron por encima del umbral.
+
+    Si rotate_all() esta enganchado en nightly_report y aun asi los archivos
+    siguen creciendo, hay algo pasando (cron loopeando, error de write).
+    """
+    problems = []
+    targets = [
+        ("status/metrics.jsonl", os.path.join(STATUS_DIR, "metrics.jsonl")),
+        ("reports/cron_log.txt", os.path.join(BASE_DIR, "reports", "cron_log.txt")),
+    ]
+    for label, path in targets:
+        if not os.path.exists(path):
+            continue
+        size_mb = os.path.getsize(path) / (1024 * 1024)
+        if size_mb > LOG_SIZE_WARN_MB:
+            problems.append(
+                f"{label}: {size_mb:.1f}MB (umbral {LOG_SIZE_WARN_MB:.0f}MB). "
+                "Verificar rotacion en nightly_report (log_rotation.rotate_all)."
+            )
+    return problems
+
+
 def run_audit():
     """Corre todas las checks. Retorna (sections, total_problems).
     sections es dict {section_name: [problemas]}. total_problems es int.
@@ -313,6 +339,7 @@ def run_audit():
         ".env (keys requeridas)": check_env_keys(tenants),
         "Nodos (heartbeat reciente)": check_node_heartbeats(),
         "Archivos viejos (data/archive)": check_archive_stale(),
+        "Logs append-only (tamano)": check_log_sizes(),
         "Workflows GH (rachas de fallos)": check_workflow_failures(),
         "Netlify build_settings": check_netlify_build_settings(tenants),
     }

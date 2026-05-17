@@ -53,12 +53,17 @@
 
 ### M2 — `PRIMARY_TENANT_SLUG` configurable desde `_registry.yml`
 
-- **status**: pending
-- **prioridad**: MEDIA
-- **estimado**: 30min
-- **bloqueado_por**: M1
+- **status**: completed
+- **done**: 2026-05-17
+- **commit**: 73cec3f (cerrado por M1)
+- **nota**: M1 borró TODA la lógica primary-aware del código (no quedó
+  `PRIMARY_TENANT_SLUG` en ningún script ni heartbeat ni accum). Solo queda
+  una mención narrativa en comentario de `post_deploy_check.py`
+  (post-mortem). No hay nada que parametrizar. Si en el futuro vuelve a
+  haber lógica primary-aware (ej. para un cliente "vidriera" del SaaS),
+  reabrir este item.
 
-**Problema**: Una vez que M1 está hecho, `PRIMARY_TENANT_SLUG = "el-industrial"` hardcodeado en update_products y nightly_report ya no se usa para compat. Pero antes de onboardear un cliente real que NO sea el-industrial, queremos que la elección del primario sea dato, no código. Solo aplica si M1 dejó algo de lógica primary-aware (ej. heartbeat global).
+**Problema (histórico)**: Una vez que M1 está hecho, `PRIMARY_TENANT_SLUG = "el-industrial"` hardcodeado en update_products y nightly_report ya no se usa para compat. Pero antes de onboardear un cliente real que NO sea el-industrial, queremos que la elección del primario sea dato, no código. Solo aplica si M1 dejó algo de lógica primary-aware (ej. heartbeat global).
 
 **Scope**:
 - En `tenants/_registry.yml`, sumar campo opcional `primary: true` a una entrada (default: la primera `active` encontrada si nadie tiene flag).
@@ -73,7 +78,9 @@
 
 ### M3 — GC de `status/metrics.jsonl` y `reports/cron_log.txt`
 
-- **status**: pending
+- **status**: completed
+- **done**: 2026-05-17
+- **commit**: (siguiente)
 - **prioridad**: ALTA (riesgo silencioso: disco Pi se llena en meses)
 - **estimado**: 1h
 

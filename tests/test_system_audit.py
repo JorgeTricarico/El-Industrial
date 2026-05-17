@@ -222,3 +222,25 @@ def test_main_does_not_send_real_telegram(monkeypatch, tmp_path):
     monkeypatch.setattr(system_audit, "TENANTS_DIR", str(tmp_path / "tenants"))
     rc = system_audit.main()
     assert rc == 0
+
+
+def test_check_log_sizes_under_threshold(monkeypatch, tmp_path):
+    status = tmp_path / "status"
+    status.mkdir()
+    (status / "metrics.jsonl").write_text("x")
+    monkeypatch.setattr(system_audit, "STATUS_DIR", str(status))
+    monkeypatch.setattr(system_audit, "BASE_DIR", str(tmp_path))
+    monkeypatch.setattr(system_audit, "LOG_SIZE_WARN_MB", 50.0)
+    assert system_audit.check_log_sizes() == []
+
+
+def test_check_log_sizes_over_threshold(monkeypatch, tmp_path):
+    status = tmp_path / "status"
+    status.mkdir()
+    big = status / "metrics.jsonl"
+    big.write_bytes(b"x" * (2 * 1024 * 1024))  # 2 MB
+    monkeypatch.setattr(system_audit, "STATUS_DIR", str(status))
+    monkeypatch.setattr(system_audit, "BASE_DIR", str(tmp_path))
+    monkeypatch.setattr(system_audit, "LOG_SIZE_WARN_MB", 1.0)
+    problems = system_audit.check_log_sizes()
+    assert any("metrics.jsonl" in p for p in problems)

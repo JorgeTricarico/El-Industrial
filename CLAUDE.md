@@ -171,6 +171,15 @@ Why: cuando se sumen clientes pagos, no comparten chat con el dev/ops.
 Si no seteas la var, comportamiento legacy se mantiene (alerts → admins
 del yaml).
 
+## Rotación de logs append-only
+
+`status/metrics.jsonl` y `reports/cron_log.txt` se appendean cada corrida.
+`scripts/log_rotation.rotate_all()` se llama desde `nightly_report.main()`
+1x/día. Si el archivo pasa `LOG_ROTATE_MAX_MB` (default 50MB), lo mueve
+comprimido a `<dir>/archive/<basename>_<YYYY-MM>.gz` y trunca el original.
+`system_audit.check_log_sizes()` (umbral `LOG_SIZE_WARN_MB`, default 100MB)
+alerta si igual sigue creciendo.
+
 Rate-limit: `alert_throttle.should_send()` deduplica alertas con el
 mismo fingerprint en ventana de 30min (configurable via
 `ALERT_THROTTLE_MIN`). Healthcheck corre cada 15min y antes podia
