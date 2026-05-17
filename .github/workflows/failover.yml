@@ -22,35 +22,69 @@ jobs:
           pip install requests xlsxwriter python-dotenv
           # Asumimos que bertual_api.py está en el repo o se puede descargar
 
+      - name: Verify LLM secrets present
+        run: |
+          # Falla si falta alguna clave (sin imprimir el valor)
+          [ -n "${{ secrets.GEMINI_API_KEY }}" ]   || { echo "::error::GEMINI_API_KEY vacio"; exit 1; }
+          [ -n "${{ secrets.CEREBRAS_API_KEY }}" ] || { echo "::error::CEREBRAS_API_KEY vacio"; exit 1; }
+          [ -n "${{ secrets.SAMBANOVA_API_KEY }}" ]     || { echo "::error::SAMBANOVA_API_KEY vacio"; exit 1; }
+          [ -n "${{ secrets.TELEGRAM_TOKEN }}" ]   || { echo "::error::TELEGRAM_TOKEN vacio"; exit 1; }
+          echo "OK: 3 LLM keys + telegram presentes"
+
       - name: Run Heartbeat Check and Failover
         env:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
+          SAMBANOVA_API_KEY: ${{ secrets.SAMBANOVA_API_KEY }}
+          BERTUAL_CUIT: ${{ secrets.BERTUAL_CUIT }}
+          BERTUAL_PASSWORD: ${{ secrets.BERTUAL_PASSWORD }}
+          BERTUAL_CLIENT_ID: ${{ secrets.BERTUAL_CLIENT_ID }}
         run: |
-          # Lógica para decidir si correr el reporte
-          LAST_RUN=$(jq -r '.last_run' status/heartbeat.json)
-          LAST_TS=$(date -d "$LAST_RUN" +%s)
-          NOW_TS=$(date +%s)
-          DIFF=$(( (NOW_TS - LAST_TS) / 3600 ))
+          set -e
+          FILE_DATE=$(date +%y-%m-%d)
+          TODAY_TAG="[run:$FILE_DATE]"
 
-          echo "Última corrida hace $DIFF horas."
+          # Dedup unificado: si algun nodo ya marco el commit de hoy, salir
+          if git log origin/main --format=%s -5 | grep -qF "$TODAY_TAG"; then
+            echo "Otro nodo ya ejecuto hoy ($TODAY_TAG). Watchdog en espera."
+            exit 0
+          fi
+
+          # Calculo de antiguedad del heartbeat (en horas)
+          if [ -f status/heartbeat.json ]; then
+            LAST_RUN=$(jq -r '.last_run' status/heartbeat.json)
+            LAST_TS=$(date -d "$LAST_RUN" +%s)
+            NOW_TS=$(date +%s)
+            DIFF=$(( (NOW_TS - LAST_TS) / 3600 ))
+          else
+            DIFF=999
+          fi
+          echo "Ultima corrida hace $DIFF horas."
 
           if [ $DIFF -ge 24 ]; then
-            echo "🚨 Alerta: Nodos locales offline por más de 24h. Activando Failover..."
-            
-            # Ejecutar actualización
+            echo "Nodos locales offline >24h. Activando failover."
             python3 scripts/update_products.py
-            
-            # Ejecutar reporte
             python3 scripts/nightly_report.py
-            
-            # Sincronizar cambios
+
             git config --global user.name "GitHub Action Watchdog"
             git config --global user.email "actions@github.com"
-            git add .
-            git commit -m "chore: failover recovery update [skip ci]"
-            git push origin main
+            if [[ -n $(git status -s) ]]; then
+              git add .
+              git commit -m "chore: failover recovery update [GH-Actions] $TODAY_TAG [skip ci]"
+              git push origin main
+            else
+              echo "Sin cambios para commitear."
+            fi
           else
-            echo "✅ Nodos locales funcionando correctamente. GitHub Watchdog en espera."
+            echo "Nodos locales funcionando. Watchdog en espera."
           fi
+
+      - name: Healthcheck (alerta si algo huele mal)
+        env:
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        # continue-on-error porque exit-code != 0 indica "alerta enviada", no falla CI
+        continue-on-error: true
+        run: python3 scripts/healthcheck.py

@@ -52,13 +52,18 @@ def test_transform_moneda_mapping():
 
 @patch("subprocess.check_output")
 def test_node_status_logic(mock_ping):
-    """Verifica la lógica de detección de nodos online/offline."""
+    """Verifica la logica de deteccion de nodos online/offline."""
+    import subprocess
     # Simular Online
     mock_ping.return_value = b"bytes"
     assert update_products.check_node_status("100.1.1.1") == "online"
-    
-    # Simular Offline
-    mock_ping.side_effect = Exception("error")
+
+    # Simular Offline (host no responde)
+    mock_ping.side_effect = subprocess.CalledProcessError(1, ["ping"])
+    assert update_products.check_node_status("100.1.1.1") == "offline"
+
+    # Simular ping no instalado
+    mock_ping.side_effect = FileNotFoundError("ping no encontrado")
     assert update_products.check_node_status("100.1.1.1") == "offline"
 
 @patch("time.sleep")

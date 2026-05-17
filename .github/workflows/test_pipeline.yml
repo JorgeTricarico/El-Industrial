@@ -1,0 +1,84 @@
+name: Tests Pipeline
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'scripts/**'
+      - 'tests/**'
+      - '.github/workflows/test_pipeline.yml'
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  pytest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pytest requests xlsxwriter python-dotenv
+
+      - name: Validate Python syntax (todos los scripts)
+        run: |
+          set -e
+          for f in scripts/*.py; do
+            python -m py_compile "$f" || { echo "::error::Sintaxis invalida en $f"; exit 1; }
+          done
+          echo "OK: todos los scripts/*.py compilan"
+
+      - name: Validate bash syntax (run_daily.sh, run_frequent.sh)
+        run: |
+          set -e
+          for f in scripts/*.sh; do
+            bash -n "$f" || { echo "::error::Sintaxis bash invalida en $f"; exit 1; }
+          done
+          echo "OK: scripts shell validos"
+
+      - name: Validate workflows YAML
+        run: |
+          python -c "
+          import yaml, sys
+          for f in ['.github/workflows/failover.yml', '.github/workflows/fallback_sync.yml', '.github/workflows/test_pipeline.yml']:
+              yaml.safe_load(open(f))
+          print('OK: workflows YAML validos')
+          "
+
+      - name: Run pytest
+        env:
+          # Forzar valores ausentes para los tests que asumen cadena explicita
+          GEMINI_API_KEY: ""
+          CEREBRAS_API_KEY: ""
+          SAMBANOVA_API_KEY: ""
+          TELEGRAM_TOKEN: ""
+          TELEGRAM_CHAT_ID: ""
+        run: |
+          pytest tests/test_nightly_report.py tests/test_healthcheck.py -v
+
+      - name: Smoke test — prompt sin palabras prohibidas
+        run: |
+          python -c "
+          import sys; sys.path.insert(0, 'scripts')
+          import nightly_report
+          prompt = nightly_report.build_prompt([], [], [])
+          plower = prompt.lower()
+          # Estas palabras solo pueden aparecer en contexto prohibitivo
+          for w in ['critico', 'alarmante', 'sin precedentes']:
+              if w in plower:
+                  idx = plower.index(w)
+                  ctx = plower[max(0, idx-40):idx]
+                  assert 'nunca' in ctx, f'Palabra prohibida sin contexto: {w!r}'
+          # Estas palabras estan completamente prohibidas en el prompt
+          for w in ['debes alarmar', 'alarma maxima']:
+              assert w not in plower, f'Frase prohibida: {w!r}'
+          print('OK: prompt tone check')
+          "

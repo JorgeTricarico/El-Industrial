@@ -36,12 +36,20 @@ GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 def get_daily_accum_path():
     return os.path.join(STATUS_DIR, "daily_accum.json")
 
-def update_heartbeat(host):
+def update_heartbeat(host, status="ok", duration_s=0):
+    """Heartbeat con status enriquecido. Se actualiza tanto en exito como en fallo."""
     os.makedirs(STATUS_DIR, exist_ok=True)
+    payload = {
+        "last_run": datetime.now().isoformat(),
+        "node": host,
+        "status": status,
+        "duration_s": round(duration_s, 2),
+    }
     try:
         with open(os.path.join(STATUS_DIR, "heartbeat.json"), "w") as f:
-            json.dump({"last_run": datetime.now().isoformat(), "node": host}, f, indent=2)
-    except: pass
+            json.dump(payload, f, indent=2)
+    except OSError as e:
+        print(f"[heartbeat] error escribiendo: {e}", file=sys.stderr)
 
 def update_accumulator(changes):
     os.makedirs(STATUS_DIR, exist_ok=True)
@@ -52,8 +60,10 @@ def update_accumulator(changes):
         try:
             with open(accum_path, "r") as f:
                 accum = json.load(f)
-                if not isinstance(accum, dict) or "new" not in accum: raise ValueError()
-        except:
+                if not isinstance(accum, dict) or "new" not in accum:
+                    raise ValueError("daily_accum.json con estructura invalida")
+        except (json.JSONDecodeError, OSError, ValueError) as e:
+            print(f"[accum] reset por error: {e}", file=sys.stderr)
             accum = {"updated": {}, "new": {}}
     
     for item in changes.get("new", []): accum["new"][item["code"]] = item
@@ -64,8 +74,10 @@ def update_accumulator(changes):
             else: accum["updated"][item["code"]] = item
             
     try:
-        with open(accum_path, "w") as f: json.dump(accum, f, indent=2)
-    except: pass
+        with open(accum_path, "w") as f:
+            json.dump(accum, f, indent=2)
+    except OSError as e:
+        print(f"[accum] error escribiendo: {e}", file=sys.stderr)
 
 def transform_item(i):
     neto = i.get("Precio", 0)
@@ -86,22 +98,29 @@ def log_metrics(host, api_status, updates=0, peer_status="unknown", start_ts=Non
     try:
         with open(os.path.join(STATUS_DIR, "metrics.jsonl"), "a", encoding="utf-8") as f:
             f.write(json.dumps(entry) + "\n")
-    except: pass
+    except OSError as e:
+        print(f"[metrics] error: {e}", file=sys.stderr)
 
 def check_node_status(ip):
     try:
-        subprocess.check_output(["ping", "-c", "1", "-W", "1", ip])
+        subprocess.check_output(["ping", "-c", "1", "-W", "1", ip], stderr=subprocess.DEVNULL)
         return "online"
-    except: return "offline"
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        return "offline"
 
 def fetch_with_retries(client):
+    last_err = None
     for i in range(3):
         try:
             t0 = time.time()
             data = client.fetch_products()
-            if data and len(data) > 100: return data, round(time.time()-t0, 2)
-        except: pass
-        time.sleep(1)
+            if data and len(data) > 100:
+                return data, round(time.time()-t0, 2)
+            last_err = f"respuesta corta o vacia (len={len(data) if data else 0})"
+        except Exception as e:
+            last_err = f"{type(e).__name__}: {e}"
+        time.sleep(2 ** i)  # backoff 1s, 2s, 4s
+    print(f"[bertual] agotados 3 intentos: {last_err}", file=sys.stderr)
     return None, 0
 
 def calculate_price(neto):
@@ -114,13 +133,17 @@ if __name__ == "__main__":
     
     api_data, api_lat = fetch_with_retries(BertualAPIClient())
     if not api_data:
-        log_metrics(host, "api_fail", 0, peer_status, start_ts); exit(1)
-        
+        update_heartbeat(host, status="api_fail", duration_s=time.time() - start_ts)
+        log_metrics(host, "api_fail", 0, peer_status, start_ts)
+        exit(1)
+
     try:
         with open(LATEST_INDEX_FILE, "r") as f:
             with gzip.open(os.path.join(BASE_DIR, f.read().strip()), "rt") as gf:
                 old_data = {p["producto"]: p for p in json.load(gf)}
-    except: old_data = {}
+    except (OSError, json.JSONDecodeError, gzip.BadGzipFile) as e:
+        print(f"[old_data] no se pudo leer la lista previa (esperado en primera corrida): {e}", file=sys.stderr)
+        old_data = {}
 
     new_items = [transform_item(i) for i in api_data]
     changes = {"updated": [], "new": []}
@@ -133,7 +156,7 @@ if __name__ == "__main__":
             
     update_accumulator(changes)
     log_metrics(host, "ok", len(changes["updated"]) + len(changes["new"]), peer_status, start_ts, changes)
-    update_heartbeat(host)
+    update_heartbeat(host, status="ok", duration_s=time.time() - start_ts)
     
     filename = f"lista_precio_{datetime.now().strftime('%y-%m-%d')}_json_compres.gz"
     rel_path = os.path.join("data", filename)

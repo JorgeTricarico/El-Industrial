@@ -1,0 +1,49 @@
+name: Dead Man Switch
+
+# Corre TODOS los dias por la mañana (12:00 UTC = 9:00 AM Argentina).
+# Si el sistema no envio Telegram anoche, el healthcheck dispara alerta directa.
+# No depende de heartbeat de los nodos locales — solo necesita los secrets.
+
+on:
+  schedule:
+    - cron: '0 12 * * *'
+  workflow_dispatch:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install requests python-dotenv
+
+      - name: Run healthcheck
+        env:
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        # exit code 0 = OK, 1 = alerta enviada, 2 = alerta no enviada
+        # No queremos que un "alerta enviada" rompa el workflow (es esperado).
+        # Pero si el script crashea (exit > 2), si queremos verlo.
+        run: |
+          set +e
+          python3 scripts/healthcheck.py
+          EC=$?
+          set -e
+          echo "healthcheck exit code: $EC"
+          if [ $EC -gt 2 ]; then
+            echo "::error::healthcheck.py crasheo (exit $EC)"
+            exit $EC
+          fi
+          if [ $EC -eq 1 ]; then
+            echo "::warning::healthcheck detecto problemas y envio alerta"
+          fi
+          if [ $EC -eq 2 ]; then
+            echo "::error::healthcheck detecto problemas pero NO pudo enviar alerta — credenciales rotas?"
+            exit 1
+          fi

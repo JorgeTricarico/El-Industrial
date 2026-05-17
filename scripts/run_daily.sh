@@ -31,15 +31,27 @@ fi
 
 cd "$PROJECT_ROOT" || exit
 
-# --- Lógica de Nodo Secundario (Iqual-Mint) ---
+# --- Dedup remoto vía commit-marker ---
+# Cualquier nodo (Pi, Mint o GH Actions) marca su corrida con el tag [run:YY-MM-DD]
+# en el commit. Antes de ejecutar, verificamos si ya hay un commit de hoy.
+TODAY_TAG="[run:$FILE_DATE]"
+if git fetch origin --quiet 2>/dev/null; then
+    LAST_COMMIT_MSG=$(git log origin/main --format=%s -5 2>/dev/null || echo "")
+    if echo "$LAST_COMMIT_MSG" | grep -qF "$TODAY_TAG"; then
+        log_message "Otro nodo ya ejecuto hoy ($TODAY_TAG). Saliendo limpio."
+        exit 0
+    fi
+fi
+
+# --- Logica de Nodo Secundario (Iqual-Mint): verificacion adicional via raw URL ---
 if [[ "${HOSTNAME,,}" == *"mint"* ]]; then
-    log_message "Nodo Secundario detectado. Verificando si el Nodo Principal ya cumplió..."
+    log_message "Nodo Secundario detectado. Verificando archivo de datos en GitHub..."
     URL="https://raw.githubusercontent.com/JorgeTricarico/El-Industrial/main/data/lista_precio_${FILE_DATE}_json_compres.gz"
     if curl --output /dev/null --silent --head --fail "$URL"; then
         log_message "El archivo ya existe en GitHub (Nodo Principal OK). Finalizando sin cambios."
         exit 0
     fi
-    log_message "AVISO: No se encontró el archivo de hoy en GitHub. El Nodo Principal pudo fallar. Procediendo como backup..."
+    log_message "AVISO: No se encontro el archivo de hoy en GitHub. Procediendo como backup..."
 fi
 
 # --- Ejecución del Script de Python ---
@@ -75,7 +87,7 @@ if [[ -n $(git status -s) ]]; then
     fi
     
     git add .
-    git commit -m "Actualización automática de precios: $(date +%d/%m/%Y) [$HOSTNAME]"
+    git commit -m "Actualizacion automatica de precios: $(date +%d/%m/%Y) [$HOSTNAME] $TODAY_TAG [skip ci]"
     
     # Intento de Push con reintentos
     MAX_RETRIES=3

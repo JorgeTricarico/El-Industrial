@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
-import os, json, requests, time
+"""Reporte ejecutivo nocturno con cadena de fallback de 3 LLMs + plantilla.
+
+Cadena: Gemini 3.1 Flash-Lite -> Cerebras Qwen 2.5 72B -> Groq Llama 3.3 70B -> Plantilla.
+La plantilla garantiza que SIEMPRE llega un mensaje a Telegram aunque caigan los 3 LLMs.
+"""
+import os, json, requests, time, socket
 from datetime import datetime
 from dotenv import load_dotenv
 
@@ -12,108 +17,250 @@ load_dotenv(ENV_FILE)
 
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 CEREBRAS_API_KEY = os.getenv("CEREBRAS_API_KEY")
+SAMBANOVA_API_KEY = os.getenv("SAMBANOVA_API_KEY")
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 
-def get_ai_analysis(prompt):
-    # Prioridad 1: Gemini 3.1 Flash-Lite (Modelo Gratis y Potente Mayo 2026)
-    if GEMINI_API_KEY:
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite-preview:generateContent?key={GEMINI_API_KEY}"
-        max_retries = 3
-        for attempt in range(max_retries):
-            try:
-                res = requests.post(url, json={"contents": [{"parts": [{"text": prompt}]}]}, timeout=40)
-                if res.status_code == 429: # Rate limit
-                    wait = (attempt + 1) * 10
-                    time.sleep(wait)
-                    continue
-                if res.ok: 
-                    return res.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
-            except:
-                if attempt == max_retries - 1: break
-                time.sleep(2)
+HOST = socket.gethostname()
 
-    # Respaldo: Cerebras Qwen 2.5 72B (Máximo razonamiento)
-    if CEREBRAS_API_KEY:
+
+def log_metric(event, detail=""):
+    """Append a structured event to status/metrics.jsonl."""
+    os.makedirs(STATUS_DIR, exist_ok=True)
+    entry = {"ts": datetime.now().isoformat(), "node": HOST, "event": event, "detail": str(detail)[:500]}
+    try:
+        with open(os.path.join(STATUS_DIR, "metrics.jsonl"), "a", encoding="utf-8") as f:
+            f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+    except OSError as e:
+        print(f"[log_metric] no se pudo escribir metrics.jsonl: {e}")
+
+
+def call_gemini(prompt):
+    if not GEMINI_API_KEY:
+        raise RuntimeError("GEMINI_API_KEY ausente")
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite-preview:generateContent?key={GEMINI_API_KEY}"
+    payload = {"contents": [{"parts": [{"text": prompt}]}]}
+    last_err = None
+    for attempt in range(3):
         try:
-            url = "https://api.cerebras.ai/v1/chat/completions"
-            headers = {"Authorization": f"Bearer {CEREBRAS_API_KEY}", "Content-Type": "application/json"}
-            payload = {"model": "qwen2.5-72b", "messages": [{"role": "user", "content": prompt}]}
-            res = requests.post(url, json=payload, headers=headers, timeout=30)
-            if res.ok: return res.json()["choices"][0]["message"]["content"].strip()
-        except: pass
+            res = requests.post(url, json=payload, timeout=40)
+            if res.status_code == 429:
+                wait = (attempt + 1) * 10
+                log_metric("llm_rate_limit", f"gemini attempt={attempt} wait={wait}s")
+                time.sleep(wait)
+                continue
+            res.raise_for_status()
+            text = res.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
+            if text:
+                return text
+            last_err = "empty response"
+        except (requests.RequestException, KeyError, ValueError) as e:
+            last_err = f"{type(e).__name__}: {e}"
+            time.sleep(2)
+    raise RuntimeError(f"gemini agotado: {last_err}")
 
-    return "Error al generar análisis (API saturada o sin cuota)."
+
+def call_cerebras(prompt):
+    if not CEREBRAS_API_KEY:
+        raise RuntimeError("CEREBRAS_API_KEY ausente")
+    url = "https://api.cerebras.ai/v1/chat/completions"
+    headers = {"Authorization": f"Bearer {CEREBRAS_API_KEY}", "Content-Type": "application/json"}
+    payload = {"model": "qwen-2.5-72b", "messages": [{"role": "user", "content": prompt}]}
+    res = requests.post(url, json=payload, headers=headers, timeout=30)
+    res.raise_for_status()
+    text = res.json()["choices"][0]["message"]["content"].strip()
+    if not text:
+        raise RuntimeError("cerebras: respuesta vacia")
+    return text
+
+
+def call_sambanova(prompt):
+    if not SAMBANOVA_API_KEY:
+        raise RuntimeError("SAMBANOVA_API_KEY ausente")
+    url = "https://api.sambanova.ai/v1/chat/completions"
+    headers = {"Authorization": f"Bearer {SAMBANOVA_API_KEY}", "Content-Type": "application/json"}
+    payload = {"model": "Meta-Llama-3.3-70B-Instruct", "messages": [{"role": "user", "content": prompt}]}
+    res = requests.post(url, json=payload, headers=headers, timeout=30)
+    res.raise_for_status()
+    text = res.json()["choices"][0]["message"]["content"].strip()
+    if not text:
+        raise RuntimeError("sambanova: respuesta vacia")
+    return text
+
+
+PROVIDERS = [
+    ("gemini", call_gemini),
+    ("cerebras", call_cerebras),
+    ("sambanova", call_sambanova),
+]
+
+
+def render_template_fallback(updated_items, top_brands, top_hikes, fecha):
+    """Mensaje plantilla cuando los 3 LLMs fallan. Garantiza entrega a Telegram."""
+    lines = [f"<b>Resumen del dia — {fecha}</b>",
+             f"{len(updated_items)} productos actualizados.", ""]
+    if top_brands:
+        lines.append("<b>Marcas con mas cambios:</b>")
+        for brand, count in top_brands[:5]:
+            lines.append(f"• {brand} ({count})")
+        lines.append("")
+    if top_hikes:
+        lines.append("<b>Mayores subas:</b>")
+        for h in top_hikes[:5]:
+            nombre = (h.get("n") or "")[:60]
+            pct = h.get("p", 0)
+            lines.append(f"• {nombre}: {pct:+.1f}%")
+        lines.append("")
+    lines.append("<i>Reporte automatico (IA no disponible hoy)</i>")
+    return "\n".join(lines)
+
+
+def get_ai_analysis(prompt):
+    """Cadena de fallback. Devuelve (texto, proveedor_usado). proveedor='template' si todos fallaron."""
+    for name, fn in PROVIDERS:
+        try:
+            result = fn(prompt)
+            log_metric("llm_used", name)
+            return result, name
+        except Exception as e:
+            log_metric("llm_failed", f"{name}: {type(e).__name__}: {e}")
+    return None, "template"
+
+
+def sanitize_html(text):
+    """Telegram HTML solo permite b, i, u, s, code, pre, a. Quita Markdown residual y emojis de alarma."""
+    text = text.replace("*", "").replace("_", "")
+    for forbidden in ("⚠️", "🚨", "🔥", "💥"):
+        text = text.replace(forbidden, "")
+    return text.strip()
+
+
+def send_telegram(message):
+    if not (TELEGRAM_TOKEN and TELEGRAM_CHAT_ID):
+        log_metric("telegram_skip", "credenciales ausentes")
+        return False
+    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
+    payload = {"chat_id": TELEGRAM_CHAT_ID, "text": message, "parse_mode": "HTML", "disable_web_page_preview": True}
+    try:
+        res = requests.post(url, data=payload, timeout=20)
+        if res.ok:
+            log_metric("telegram_sent", "html")
+            return True
+        log_metric("telegram_html_fail", f"{res.status_code}: {res.text[:200]}")
+    except requests.RequestException as e:
+        log_metric("telegram_html_fail", f"{type(e).__name__}: {e}")
+    # Fallback a texto plano (si Telegram rechazo el HTML)
+    plain = message.replace("<b>", "").replace("</b>", "").replace("<i>", "").replace("</i>", "")
+    try:
+        res = requests.post(url, data={"chat_id": TELEGRAM_CHAT_ID, "text": plain}, timeout=20)
+        if res.ok:
+            log_metric("telegram_sent", "plain")
+            return True
+        log_metric("telegram_plain_fail", f"{res.status_code}: {res.text[:200]}")
+    except requests.RequestException as e:
+        log_metric("telegram_plain_fail", f"{type(e).__name__}: {e}")
+    return False
+
+
+def build_prompt(updated_items, top_brands, top_hikes):
+    return f"""Sos el asistente de un vendedor de ferreteria industrial PYME en Argentina.
+Tu mensaje va a Telegram y el vendedor puede reenviarlo a clientes.
+
+Tono: coloquial argentino, directo, util. Como un colega que avisa algo concreto,
+NO como un analista de mercado. NUNCA uses palabras: "critico", "alarmante",
+"advertencia", "riesgo", "historico", "sin precedentes", "masivo". NUNCA pongas
+emojis de alarma. Como mucho un 📌 al inicio.
+
+Datos de hoy:
+- Productos actualizados: {len(updated_items)}
+- Marcas mas movidas: {top_brands}
+- Mayores subas (%, producto, marca): {top_hikes}
+
+Devolveme exactamente:
+1. Una linea de resumen (que movio hoy y a que tipo de cliente conviene avisar).
+2. 3 a 5 bullets con los cambios concretos mas relevantes (producto + % subio/bajo).
+3. Si hay algo accionable obvio (re-cotizar, avisar a un rubro), una linea final.
+
+Formato: HTML simple solo con <b>negrita</b> y bullets con "• ". Maximo 1200 caracteres.
+Sin introducciones tipo "Hola" ni cierres tipo "Saludos"."""
+
 
 def main():
     accum_path = os.path.join(STATUS_DIR, "daily_accum.json")
-    if not os.path.exists(accum_path): return
+    if not os.path.exists(accum_path):
+        log_metric("nightly_skip", "sin daily_accum.json")
+        return
 
     with open(accum_path, "r", encoding="utf-8") as f:
         accum_data = json.load(f)
-    
+
     updated_items = list(accum_data.get("updated", {}).values())
-    
-    # --- PROCESAMIENTO ESTADÍSTICO ---
-    stats = {"marcas": {}, "aumentos": []}
+
+    stats_marcas = {}
+    aumentos = []
     for item in updated_items:
         brand = item.get("marca") or item.get("brand") or item.get("Familia") or "Otras"
-        stats["marcas"][brand] = stats["marcas"].get(brand, 0) + 1
-        
-        # Intentar calcular % si hay precio viejo y nuevo
+        stats_marcas[brand] = stats_marcas.get(brand, 0) + 1
         try:
             old_p = float(item.get("old", 0))
             new_p = float(item.get("new", 0))
             if old_p > 0:
                 diff = ((new_p - old_p) / old_p) * 100
-                stats["aumentos"].append({"n": item.get("name", brand), "p": diff, "m": brand})
-        except: pass
+                aumentos.append({"n": item.get("name", brand), "p": diff, "m": brand})
+        except (TypeError, ValueError) as e:
+            log_metric("price_parse_fail", f"{item.get('code', '?')}: {e}")
 
-    # Top 3 marcas y Top 10 aumentos más fuertes
-    top_brands = sorted(stats["marcas"].items(), key=lambda x: x[1], reverse=True)[:5]
-    top_hikes = sorted(stats["aumentos"], key=lambda x: x["p"], reverse=True)[:15]
+    top_brands = sorted(stats_marcas.items(), key=lambda x: x[1], reverse=True)[:5]
+    top_hikes = sorted(aumentos, key=lambda x: x["p"], reverse=True)[:15]
 
-    if len(updated_items) == 0:
-        analysis = "✅ <b>Sin Novedades:</b> No se detectaron actualizaciones de precios ni productos nuevos en el día de hoy."
-    else:
-        prompt = f"""
-Actúa como analista de precios profesional para 'El Industrial'. 
-Sé MUY CONCISO. Reporte estilo Telegram. 
-USA SOLO LISTAS Y BOLD. No escribas introducciones ni dramatismos bélicos.
-
-DATOS:
-- Cambios totales: {len(updated_items)}
-- Marcas con más cambios: {top_brands}
-- Mayores aumentos detectados: {top_hikes}
-
-INSTRUCCIONES:
-1. ⚠️ **ADVERTENCIAS**: Menciona si una marca subió más de un 10% o si hubo cambios masivos de lista. Usa un tono sobrio.
-2. 📈 **ESTADÍSTICAS**: Resumen rápido de aumentos promedios y marcas afectadas.
-3. 🕒 **CARGA**: Indica la hora estimada de carga del proveedor basada en los datos.
-4. **FORMATO**: Usa <b>texto</b> para resaltar. No uses Markdown (* o _).
-"""
-        analysis = get_ai_analysis(prompt)
-        # Limpiar posibles caracteres Markdown que la IA meta por inercia
-        analysis = analysis.replace("*", "").replace("_", "")
-    
     now = datetime.now()
     fecha = now.strftime("%d/%m/%Y")
     hora = now.strftime("%H:%M")
-    full_report = f"<b>🌙 REPORTE INDUSTRIAL - {fecha} {hora}</b>\n\n{analysis}"
-    
-    if TELEGRAM_TOKEN and TELEGRAM_CHAT_ID:
-        url_tg = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
-        # Usamos HTML que es mucho más estable
-        res = requests.post(url_tg, data={"chat_id": TELEGRAM_CHAT_ID, "text": full_report, "parse_mode": "HTML"})
-        if not res.ok:
-            # Fallback total a texto plano
-            requests.post(url_tg, data={"chat_id": TELEGRAM_CHAT_ID, "text": full_report})
 
-    # Archivar
+    if len(updated_items) == 0:
+        body = "Sin novedades hoy. No se detectaron cambios de precios ni productos nuevos."
+        provider = "none"
+    else:
+        prompt = build_prompt(updated_items, top_brands, top_hikes)
+        body, provider = get_ai_analysis(prompt)
+        if body is None:
+            body = render_template_fallback(updated_items, top_brands, top_hikes, fecha)
+        else:
+            body = sanitize_html(body)
+
+    full_report = f"📌 <b>Lista del dia — {fecha} {hora}</b>\n\n{body}"
+    # Telegram limita a 4096; recortamos con margen.
+    if len(full_report) > 3900:
+        full_report = full_report[:3870] + "\n\n<i>(mensaje recortado)</i>"
+
+    sent = send_telegram(full_report)
+    log_metric("nightly_done", f"provider={provider} sent={sent} items={len(updated_items)}")
+
+    # Dead-man-switch: registrar que el mensaje efectivamente se envio.
+    # El healthcheck consulta este timestamp para detectar fallos de entrega.
+    if sent:
+        try:
+            hb_path = os.path.join(STATUS_DIR, "heartbeat.json")
+            hb = {}
+            if os.path.exists(hb_path):
+                with open(hb_path, "r", encoding="utf-8") as f:
+                    hb = json.load(f)
+            hb["last_telegram_iso"] = datetime.now().isoformat()
+            hb["last_telegram_provider"] = provider
+            with open(hb_path, "w", encoding="utf-8") as f:
+                json.dump(hb, f, indent=2)
+        except (OSError, json.JSONDecodeError) as e:
+            log_metric("heartbeat_update_fail", f"{type(e).__name__}: {e}")
+
+    # Archivar accum independientemente del envio
     archive_dir = os.path.join(STATUS_DIR, "archive")
     os.makedirs(archive_dir, exist_ok=True)
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-    os.rename(accum_path, os.path.join(archive_dir, f"accum_{ts}.json"))
+    try:
+        os.rename(accum_path, os.path.join(archive_dir, f"accum_{ts}.json"))
+    except OSError as e:
+        log_metric("archive_fail", f"{type(e).__name__}: {e}")
+
 
 if __name__ == "__main__":
     main()
