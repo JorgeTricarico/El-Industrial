@@ -47,10 +47,10 @@ jobs:
       - name: Validate workflows YAML
         run: |
           python -c "
-          import yaml, sys
-          for f in ['.github/workflows/failover.yml', '.github/workflows/fallback_sync.yml', '.github/workflows/test_pipeline.yml']:
+          import yaml, glob, sys
+          for f in sorted(glob.glob('.github/workflows/*.yml')):
               yaml.safe_load(open(f))
-          print('OK: workflows YAML validos')
+              print(f'OK: {f}')
           "
 
       - name: Run pytest
