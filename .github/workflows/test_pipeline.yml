@@ -64,21 +64,15 @@ jobs:
         run: |
           pytest tests/test_nightly_report.py tests/test_healthcheck.py -v
 
-      - name: Smoke test — prompt sin palabras prohibidas
+      - name: Smoke test — el prompt es construible sin errores
         run: |
           python -c "
           import sys; sys.path.insert(0, 'scripts')
           import nightly_report
+          # Solo validamos que se construya. El tone-check estricto vive en pytest
+          # (tests/test_nightly_report.py::test_prompt_prohibe_palabras_alarmistas).
           prompt = nightly_report.build_prompt([], [], [])
-          plower = prompt.lower()
-          # Estas palabras solo pueden aparecer en contexto prohibitivo
-          for w in ['critico', 'alarmante', 'sin precedentes']:
-              if w in plower:
-                  idx = plower.index(w)
-                  ctx = plower[max(0, idx-40):idx]
-                  assert 'nunca' in ctx, f'Palabra prohibida sin contexto: {w!r}'
-          # Estas palabras estan completamente prohibidas en el prompt
-          for w in ['debes alarmar', 'alarma maxima']:
-              assert w not in plower, f'Frase prohibida: {w!r}'
-          print('OK: prompt tone check')
+          assert prompt and 'vendedor' in prompt.lower()
+          assert 'pyme' in prompt.lower() or 'ferreteria' in prompt.lower()
+          print('OK: prompt construible')
           "
