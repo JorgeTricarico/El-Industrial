@@ -213,3 +213,29 @@ def test_main_envia_telegram_aunque_llm_falle(mock_post, mock_send, tmp_path, mo
     # La plantilla debe contener al menos una de estas señales del item de prueba
     assert any(s in sent_msg for s in ["TEST", "Cable test", "1 productos"]), \
         f"mensaje plantilla sin datos del item: {sent_msg!r}"
+
+
+# ============ ROTACION DE ARCHIVE ============
+
+def test_prune_borra_archivos_viejos(tmp_path):
+    """prune_old_archives elimina archivos con mtime > N dias y conserva los recientes."""
+    import time as _time
+    archive = tmp_path / "archive"
+    archive.mkdir()
+    viejo = archive / "accum_old.json"
+    viejo.write_text("{}")
+    nuevo = archive / "accum_new.json"
+    nuevo.write_text("{}")
+    # Backdating: ponemos mtime de "viejo" a 100 dias atras
+    cien_dias = _time.time() - 100 * 86400
+    os.utime(viejo, (cien_dias, cien_dias))
+
+    removed = nightly_report.prune_old_archives(str(archive), days=90)
+    assert removed == 1
+    assert not viejo.exists()
+    assert nuevo.exists()
+
+
+def test_prune_sin_archive_dir_no_explota(tmp_path):
+    removed = nightly_report.prune_old_archives(str(tmp_path / "no_existe"), days=90)
+    assert removed == 0

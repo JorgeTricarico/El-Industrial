@@ -108,3 +108,40 @@ def test_send_alert_llama_telegram(mock_post):
 @patch('healthcheck.TELEGRAM_CHAT_ID', None)
 def test_send_alert_no_credenciales_devuelve_false():
     assert healthcheck.send_alert(["x"]) is False
+
+
+# ============ DRIFT DE VERSION ============
+
+@patch('healthcheck.subprocess.check_output')
+@patch('healthcheck.subprocess.check_call')
+def test_drift_detecta_version_distinta(mock_call, mock_out):
+    """Si heartbeat.version != origin/main, debe reportar drift."""
+    mock_call.return_value = 0
+    mock_out.return_value = b"deadbee\n"
+    hb = {"version": "cafe123", "node": "raspberrypi"}
+    msg = healthcheck.detect_version_drift(hb)
+    assert msg is not None
+    assert "cafe123" in msg and "deadbee" in msg
+    assert "raspberrypi" in msg
+
+
+@patch('healthcheck.subprocess.check_output')
+@patch('healthcheck.subprocess.check_call')
+def test_drift_silencioso_si_versiones_coinciden(mock_call, mock_out):
+    mock_call.return_value = 0
+    mock_out.return_value = b"cafe123\n"
+    hb = {"version": "cafe123", "node": "raspberrypi"}
+    assert healthcheck.detect_version_drift(hb) is None
+
+
+def test_drift_silencioso_si_heartbeat_sin_version():
+    """Heartbeats viejos (pre-cambio) no tienen 'version'; no alertar."""
+    assert healthcheck.detect_version_drift({"node": "x"}) is None
+    assert healthcheck.detect_version_drift(None) is None
+
+
+@patch('healthcheck.subprocess.check_call', side_effect=FileNotFoundError("git no instalado"))
+def test_drift_silencioso_si_git_falla(_mock):
+    """Si git no responde (sin red, sin git), no alertamos por eso."""
+    hb = {"version": "cafe123", "node": "x"}
+    assert healthcheck.detect_version_drift(hb) is None

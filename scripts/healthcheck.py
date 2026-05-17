@@ -10,7 +10,7 @@ Diseñado para correr:
 - En la Pi via cron matinal: `0 8 * * *`
 - En GitHub Actions como step de failover.yml
 """
-import os, json, sys, socket
+import os, json, sys, socket, subprocess
 from datetime import datetime, timedelta
 import requests
 from dotenv import load_dotenv
@@ -72,6 +72,39 @@ def last_n_runs(n=3):
     return parsed
 
 
+def detect_version_drift(heartbeat):
+    """Compara heartbeat.version con origin/main. Devuelve mensaje si hay drift, None si OK.
+
+    Hace git fetch para tener origin/main al dia. Si falla la red o git, retorna None
+    silenciosamente — no queremos alertar por problemas de conectividad transitorios.
+    """
+    if not heartbeat or "version" not in heartbeat:
+        return None
+    node_ver = heartbeat.get("version", "")
+    if not node_ver or node_ver == "unknown":
+        return None
+    try:
+        subprocess.check_call(
+            ["git", "-C", BASE_DIR, "fetch", "origin", "--quiet"],
+            timeout=15, stderr=subprocess.DEVNULL,
+        )
+        remote_ver = subprocess.check_output(
+            ["git", "-C", BASE_DIR, "rev-parse", "--short", "origin/main"],
+            timeout=5, stderr=subprocess.DEVNULL,
+        ).decode().strip()
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired, FileNotFoundError, OSError):
+        return None
+    if not remote_ver:
+        return None
+    # Comparar prefijos (corto vs corto). Si difieren, hay drift.
+    if not (node_ver.startswith(remote_ver) or remote_ver.startswith(node_ver)):
+        return (
+            f"Drift de version: el nodo '{heartbeat.get('node', '?')}' corrio HEAD={node_ver} "
+            f"pero origin/main esta en {remote_ver}. El nodo no esta pulleando."
+        )
+    return None
+
+
 def diagnose():
     """Devuelve (status, mensaje). status='ok' o 'alert'."""
     problems = []
@@ -104,6 +137,10 @@ def diagnose():
     last_runs = last_n_runs(3)
     if last_runs and all(r.get("api") == "api_fail" for r in last_runs):
         problems.append(f"Las ultimas {len(last_runs)} corridas fallaron contra la API Bertual.")
+
+    drift = detect_version_drift(hb)
+    if drift:
+        problems.append(drift)
 
     if problems:
         return "alert", problems

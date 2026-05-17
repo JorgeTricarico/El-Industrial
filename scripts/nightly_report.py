@@ -261,6 +261,27 @@ def main():
     except OSError as e:
         log_metric("archive_fail", f"{type(e).__name__}: {e}")
 
+    prune_old_archives(archive_dir, days=90)
+
+
+def prune_old_archives(archive_dir, days=90):
+    """Borra archivos de archive_dir con mtime > N dias. Retorna cantidad eliminada."""
+    if not os.path.isdir(archive_dir):
+        return 0
+    cutoff = time.time() - days * 86400
+    removed = 0
+    for name in os.listdir(archive_dir):
+        path = os.path.join(archive_dir, name)
+        try:
+            if os.path.isfile(path) and os.path.getmtime(path) < cutoff:
+                os.remove(path)
+                removed += 1
+        except OSError:
+            continue
+    if removed:
+        log_metric("archive_prune", f"removed={removed} cutoff={days}d")
+    return removed
+
 
 if __name__ == "__main__":
     main()

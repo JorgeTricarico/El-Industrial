@@ -34,6 +34,22 @@ if ! git pull --rebase --autostash origin main --quiet 2>>"$LOG_FILE"; then
     log_message "ADVERTENCIA: git pull fallo en frequent, continuando con codigo local."
 fi
 
+# --- Auto-install deps si requirements.txt cambio (igual logica que run_daily) ---
+REQ_FILE="$PROJECT_ROOT/requirements.txt"
+HASH_FILE="$PROJECT_ROOT/status/.deps_hash"
+if [ -f "$REQ_FILE" ] && [ -d "$VENV_PATH" ]; then
+    mkdir -p "$PROJECT_ROOT/status"
+    CURRENT_HASH=$(sha256sum "$REQ_FILE" 2>/dev/null | awk '{print $1}')
+    STORED_HASH=$(cat "$HASH_FILE" 2>/dev/null || echo "")
+    if [ "$CURRENT_HASH" != "$STORED_HASH" ]; then
+        log_message "requirements.txt cambio. Reinstalando deps en venv..."
+        if "$VENV_PATH/bin/pip" install -q -r "$REQ_FILE" >>"$LOG_FILE" 2>&1; then
+            echo "$CURRENT_HASH" > "$HASH_FILE"
+            log_message "Deps reinstaladas OK."
+        fi
+    fi
+fi
+
 # --- Evitar ejecución si el nodo ya está actualizado (opcional para frecuente) ---
 # Si queremos que el frecuente siga corriendo para capturar telemetría, no lo bloqueamos por fecha.
 # Pero sí debemos evitar que corra si el lock file local existe.

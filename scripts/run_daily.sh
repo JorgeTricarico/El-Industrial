@@ -44,6 +44,27 @@ else
     log_message "ADVERTENCIA: git pull fallo, continuando con codigo local."
 fi
 
+# --- Auto-install deps si requirements.txt cambio ---
+# Cada nodo guarda el hash del requirements.txt instalado en status/.deps_hash.
+# Si el hash actual difiere (alguien actualizo el archivo y pusheo), reinstalamos
+# para que git pull + nueva libreria funcionen sin intervencion manual.
+REQ_FILE="$PROJECT_ROOT/requirements.txt"
+HASH_FILE="$PROJECT_ROOT/status/.deps_hash"
+if [ -f "$REQ_FILE" ] && [ -d "$VENV_PATH" ]; then
+    mkdir -p "$PROJECT_ROOT/status"
+    CURRENT_HASH=$(sha256sum "$REQ_FILE" 2>/dev/null | awk '{print $1}')
+    STORED_HASH=$(cat "$HASH_FILE" 2>/dev/null || echo "")
+    if [ "$CURRENT_HASH" != "$STORED_HASH" ]; then
+        log_message "requirements.txt cambio. Reinstalando deps en venv..."
+        if "$VENV_PATH/bin/pip" install -q -r "$REQ_FILE" >>"$LOG_FILE" 2>&1; then
+            echo "$CURRENT_HASH" > "$HASH_FILE"
+            log_message "Deps reinstaladas OK."
+        else
+            log_message "ERROR: pip install fallo. Continuando con deps existentes."
+        fi
+    fi
+fi
+
 # --- Dedup remoto vía commit-marker ---
 # Cualquier nodo (Pi, Mint o GH Actions) marca su corrida con el tag [run:YY-MM-DD]
 # en el commit. Antes de ejecutar, verificamos si ya hay un commit de hoy.
@@ -54,9 +75,22 @@ if echo "$LAST_COMMIT_MSG" | grep -qF "$TODAY_TAG"; then
     exit 0
 fi
 
-# --- Logica de Nodo Secundario (Iqual-Mint): verificacion adicional via raw URL ---
-if [[ "${HOSTNAME,,}" == *"mint"* ]]; then
-    log_message "Nodo Secundario detectado. Verificando archivo de datos en GitHub..."
+# --- Rol del nodo: primary o backup ---
+# Se configura en .env de cada nodo (EL_INDUSTRIAL_ROLE=primary|backup).
+# Fallback: hostname contiene "mint" => backup (compatibilidad con setups viejos).
+ROLE="${EL_INDUSTRIAL_ROLE:-}"
+if [ -z "$ROLE" ]; then
+    if [[ "${HOSTNAME,,}" == *"mint"* ]]; then
+        ROLE="backup"
+    else
+        ROLE="primary"
+    fi
+fi
+log_message "Rol del nodo: $ROLE"
+
+# --- Logica de Nodo Secundario (Backup): verificacion adicional via raw URL ---
+if [ "$ROLE" = "backup" ]; then
+    log_message "Nodo Secundario. Verificando archivo de datos en GitHub..."
     URL="https://raw.githubusercontent.com/JorgeTricarico/El-Industrial/main/data/lista_precio_${FILE_DATE}_json_compres.gz"
     if curl --output /dev/null --silent --head --fail "$URL"; then
         log_message "El archivo ya existe en GitHub (Nodo Principal OK). Finalizando sin cambios."
@@ -81,9 +115,15 @@ fi
 
 log_message "Ejecutando reporte ejecutivo nocturno..."
 python3 "$SCRIPT_DIR/nightly_report.py"
+NR_EXIT_CODE=$?
+if [ $NR_EXIT_CODE -eq 0 ]; then
+    log_message "Nightly OK (exit=0). Telegram deberia haber recibido el informe."
+else
+    log_message "ADVERTENCIA: nightly_report.py salio con codigo $NR_EXIT_CODE. Revisar status/metrics.jsonl."
+fi
 
-# --- No pushear si es un nodo de backup (iQual-Mint) ---
-if [[ "${HOSTNAME,,}" == *"mint"* ]]; then
+# --- No pushear si es un nodo de backup ---
+if [ "$ROLE" = "backup" ]; then
     log_message "Nodo Secundario (Backup): No se realizará push a GitHub para evitar conflictos."
     exit 0
 fi

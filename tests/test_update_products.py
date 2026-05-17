@@ -82,29 +82,29 @@ def test_api_resilience_retries(mock_sleep):
     assert len(data) == 110
     assert mock_client.fetch_products.call_count == 3
 
-def test_accumulator_robustness_corrupt_file(tmp_path):
+def test_accumulator_robustness_corrupt_file(tmp_path, monkeypatch):
     """Verifica que el acumulador se recupere si el archivo JSON está corrupto."""
-    update_products.STATUS_DIR = str(tmp_path)
+    monkeypatch.setattr(update_products, "STATUS_DIR", str(tmp_path))
     accum_file = tmp_path / "daily_accum.json"
-    
+
     # Escribir basura en el archivo
     with open(accum_file, "w") as f: f.write("esto no es un json { {")
-    
+
     # El sistema no debe crashear, debe inicializar un acumulador nuevo
     new_changes = {"new": [{"code": "ABC", "name": "Test"}], "updated": []}
     update_products.update_accumulator(new_changes)
-    
+
     with open(accum_file, "r") as f:
         data = json.load(f)
         assert "ABC" in data["new"]
 
-def test_heartbeat_robustness_corrupt_file(tmp_path):
+def test_heartbeat_robustness_corrupt_file(tmp_path, monkeypatch):
     """Verifica que el heartbeat maneje archivos corruptos sin morir."""
-    update_products.STATUS_DIR = str(tmp_path)
+    monkeypatch.setattr(update_products, "STATUS_DIR", str(tmp_path))
     heartbeat_file = tmp_path / "heartbeat.json"
-    
+
     with open(heartbeat_file, "w") as f: f.write("corrupto")
-    
+
     # No debe dar error al actualizar
     update_products.update_heartbeat("test-node")
     assert heartbeat_file.exists()
