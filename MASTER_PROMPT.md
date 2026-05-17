@@ -102,7 +102,7 @@
 
 - **status**: completed
 - **done**: 2026-05-17
-- **commit**: (siguiente)
+- **commit**: a2b3bed
 - **prioridad**: MEDIA
 - **estimado**: 1h
 
