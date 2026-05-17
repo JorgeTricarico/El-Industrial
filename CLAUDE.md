@@ -178,6 +178,10 @@ spamear el mismo problema; ahora lo silencia.
 - **Tono Telegram**: "vendedor amigo" coloquial argentino. Sin palabras
   alarmistas en reportes comerciales.
 
+## Backlog de mejoras
+
+`MASTER_PROMPT.md` en la raíz tiene el backlog priorizado. Cuando el user diga *"continuá con el master prompt"* (o equivalente), abrirlo y tomar el primer item `status: pending` no bloqueado. Cada item lleva scope + acceptance. Cuando se cierra: status → completed, fecha, sha del commit.
+
 ## Antes de mergear
 
 1. `pytest tests/` verde.
