@@ -39,7 +39,7 @@ clients:
     notes: "Cuenta personal. Recibe reportes (para ver que llega al cliente) + alertas tecnicas."
 
   - name: "El Industrial (piloto)"
-    telegram_chat_id: 0
-    enabled: false
+    telegram_chat_id: 6425231391
+    enabled: true
     role: client
-    notes: "PENDIENTE: pegar chat_id real y poner enabled: true cuando esten las condiciones acordadas."
+    notes: "TEMPORAL: espejo del chat de dev (Jorge) para validar entrega del reporte como 'cliente'. Cambiar a chat_id real del cliente cuando se onboardee."
