@@ -124,3 +124,50 @@ def test_yaml_corrupto_no_explota(tmp_path):
     out = clients.recipients_for("report", legacy_chat_id="legacy", path=p)
     # Cae al legacy porque load fallo
     assert out == [("legacy", "legacy_env_chat_id")]
+
+
+def test_tech_chat_override_redirige_alertas(tmp_path, monkeypatch):
+    """Si TELEGRAM_TECH_CHAT_ID esta seteado, las alertas van SOLO ahi."""
+    p = write_yaml(tmp_path, """
+clients:
+  - name: dev
+    telegram_chat_id: 111
+    enabled: true
+    role: admin
+  - name: cliente_paga
+    telegram_chat_id: 222
+    enabled: true
+    role: client
+""")
+    monkeypatch.setenv("TELEGRAM_TECH_CHAT_ID", "999_tech")
+    out = clients.recipients_for("alert", path=p)
+    assert out == [("999_tech", "tech_channel")], (
+        "alert con override debe ir SOLO al canal tecnico, nunca al admin/client del yaml"
+    )
+
+
+def test_tech_chat_override_no_afecta_reportes(tmp_path, monkeypatch):
+    """El override solo afecta alerts. Los reportes comerciales siguen igual."""
+    p = write_yaml(tmp_path, """
+clients:
+  - name: cliente_paga
+    telegram_chat_id: 222
+    enabled: true
+    role: client
+""")
+    monkeypatch.setenv("TELEGRAM_TECH_CHAT_ID", "999_tech")
+    out = clients.recipients_for("report", path=p)
+    assert [cid for cid, _ in out] == ["222"]
+
+
+def test_tech_chat_vacio_no_overridea(tmp_path, monkeypatch):
+    p = write_yaml(tmp_path, """
+clients:
+  - name: dev
+    telegram_chat_id: 111
+    enabled: true
+    role: admin
+""")
+    monkeypatch.setenv("TELEGRAM_TECH_CHAT_ID", "   ")
+    out = clients.recipients_for("alert", path=p)
+    assert [cid for cid, _ in out] == ["111"]

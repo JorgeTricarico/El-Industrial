@@ -46,10 +46,23 @@ def recipients_for(category, legacy_chat_id=None, path=None):
                     como unico destinatario. Pasale el TELEGRAM_CHAT_ID del .env
                     desde el script que llame.
 
+    Override por env (separa canales tecnicos de comerciales):
+        TELEGRAM_TECH_CHAT_ID  — si esta seteado, REEMPLAZA los destinatarios
+                                 cuando category=="alert". Util para mandar
+                                 alertas a un chat dev separado del cliente.
+
     Retorna lista de (chat_id:str, name:str). Vacia si no hay destinatarios validos.
     """
     if category not in ("report", "alert"):
         raise ValueError(f"category invalida: {category!r}")
+
+    # Override por env: si se definio canal tecnico separado, las alertas van
+    # SOLO ahi y no a los admin chats de clients.yml. Esto permite separar
+    # el chat del cliente final del chat de dev/ops cuando se sumen clientes pagos.
+    if category == "alert":
+        tech_chat = os.getenv("TELEGRAM_TECH_CHAT_ID", "").strip()
+        if tech_chat:
+            return [(tech_chat, "tech_channel")]
 
     raw = load_clients(path=path)
     out = []

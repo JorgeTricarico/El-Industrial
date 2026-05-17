@@ -223,6 +223,17 @@ def send_alert(problems):
         print("[telegram] sin destinatarios admin configurados.", file=sys.stderr)
         return False
 
+    # Rate-limit: si el mismo set de problemas se mando hace < N min, no spamear.
+    try:
+        sys.path.insert(0, SCRIPT_DIR)
+        import alert_throttle
+        send_ok, reason = alert_throttle.should_send(problems)
+        if not send_ok:
+            print(f"[telegram] throttled: {reason}", file=sys.stderr)
+            return False
+    except ImportError:
+        pass  # sin throttle disponible, mandar igual
+
     # Diagnostico AI con contexto. Solo admin/dev, nunca cliente.
     ai_text, ai_provider = "", "skip"
     try:

@@ -113,6 +113,22 @@ sistema produce" → "lo que el cliente ve"**.
 - Cualquier site nuevo se crea con `cmd=''` y `dir='tenants/<slug>'`.
 - `scripts/system_audit.py` chequea esto semanalmente (build_settings drift).
 
+## Canal Telegram separado (tecnico vs comercial)
+
+Variable de entorno `TELEGRAM_TECH_CHAT_ID`: si esta seteada, **redirige
+todas las alertas tecnicas (healthcheck, post_deploy_check, system_audit)
+a ese chat** y las saca del chat de los admins de `clients.yml`. Los
+reportes comerciales nocturnos siguen yendo a admin+client del yaml.
+
+Why: cuando se sumen clientes pagos, no comparten chat con el dev/ops.
+Si no seteas la var, comportamiento legacy se mantiene (alerts → admins
+del yaml).
+
+Rate-limit: `alert_throttle.should_send()` deduplica alertas con el
+mismo fingerprint en ventana de 30min (configurable via
+`ALERT_THROTTLE_MIN`). Healthcheck corre cada 15min y antes podia
+spamear el mismo problema; ahora lo silencia.
+
 ## Convenciones del repo
 
 - **Timezone**: AR (`America/Argentina/Buenos_Aires`) en todos los timestamps
