@@ -58,11 +58,22 @@ gh secret set GROQ_API_KEY
 | `dead_man_switch.yml` | 12:00 | 09:00 | Healthcheck independiente — alerta Telegram si el reporte de anoche no salió |
 | `test_pipeline.yml` | en push/PR | — | Tests automáticos |
 
+## ⚠️ Limitación arquitectural conocida (importante)
+
+**La API de Bertual NO es accesible desde los runners de GitHub Actions** (timeout). Esto significa que el "cloud fallback" no puede regenerar la lista de precios — sólo puede avisar al cliente que la Pi no respondió.
+
+Resilencia real:
+- **Pi y Mint caen, GH Actions corre**: ❌ NO salva con lista nueva, solo manda mensaje "Pi sin contacto hoy".
+- **Pi cae pero ya pusheó ayer**: ✅ Reporte con datos previos.
+- **Los 3 LLMs caen**: ✅ Plantilla local.
+
+Si esto se vuelve crítico, opciones futuras: pedir a Bertual whitelist de IPs GH (https://api.github.com/meta), o setup self-hosted runner en una VPS argentina, o tunnel Tailscale.
+
 ## 3. Sistema de alertas — qué dispara qué
 
 | Síntoma | Detector | Cómo te enteras |
 |---|---|---|
-| Pi se apagó / sin internet | `failover.yml` watchdog | GH Actions corre el pipeline desde la nube + commit `[GH-Actions]` |
+| Pi se apagó / sin internet | `failover.yml` watchdog | Telegram "Pi sin contacto hoy" (NO regenera lista) |
 | Reporte Telegram no llegó anoche | `dead_man_switch.yml` 12:00 UTC | Telegram con `🔧 El Industrial — chequeo...` |
 | API Bertual cayó 3 corridas seguidas | `healthcheck.py` matinal en Pi | Telegram con detalle |
 | Los 3 LLMs caídos | `nightly_report.py` plantilla fallback | Cliente recibe mensaje "Reporte automático (IA no disponible hoy)" — no es alerta, es UX |

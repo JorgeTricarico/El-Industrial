@@ -55,29 +55,35 @@ jobs:
           [ -n "${{ secrets.TELEGRAM_TOKEN }}" ]   || { echo "::error::TELEGRAM_TOKEN vacio"; exit 1; }
           echo "OK: 3 LLM keys + telegram presentes"
 
-      - name: Run Update (Fallback)
+      # NOTA: la API de Bertual NO es accesible desde runners de GitHub Actions (timeout).
+      # Por eso este fallback NO intenta update_products.py — solo avisa al cliente
+      # que la Pi no respondio y corre el reporte con el daily_accum que haya.
+      - name: Notificar que la Pi no respondio hoy
         if: steps.check_sync.outputs.skip == 'false'
         env:
-          BERTUAL_CUIT: ${{ secrets.BERTUAL_CUIT }}
-          BERTUAL_PASSWORD: ${{ secrets.BERTUAL_PASSWORD }}
-          BERTUAL_CLIENT_ID: ${{ secrets.BERTUAL_CLIENT_ID }}
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: python scripts/notify_pi_offline.py
+
+      - name: Intentar reporte con datos previos (best effort)
+        if: steps.check_sync.outputs.skip == 'false'
+        continue-on-error: true
+        env:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
           SAMBANOVA_API_KEY: ${{ secrets.SAMBANOVA_API_KEY }}
-        run: |
-          python scripts/update_products.py
-          python scripts/nightly_report.py
+        run: python scripts/nightly_report.py
 
-      - name: Commit and Push
+      - name: Commit y push del archivo de aviso (si hubo cambios)
         if: steps.check_sync.outputs.skip == 'false'
         run: |
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action Fallback"
           if [[ -n $(git status -s) ]]; then
             git add .
-            git commit -m "Cloud Fallback: actualizacion automatica [GH-Actions] ${{ steps.check_sync.outputs.today_tag }} [skip ci]"
+            git commit -m "Cloud Fallback: aviso Pi offline [GH-Actions] ${{ steps.check_sync.outputs.today_tag }} [skip ci]"
             git push origin main
           else
             echo "Sin cambios para commitear."

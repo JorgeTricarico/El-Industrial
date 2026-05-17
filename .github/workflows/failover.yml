@@ -38,9 +38,6 @@ jobs:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
           SAMBANOVA_API_KEY: ${{ secrets.SAMBANOVA_API_KEY }}
-          BERTUAL_CUIT: ${{ secrets.BERTUAL_CUIT }}
-          BERTUAL_PASSWORD: ${{ secrets.BERTUAL_PASSWORD }}
-          BERTUAL_CLIENT_ID: ${{ secrets.BERTUAL_CLIENT_ID }}
         run: |
           set -e
           FILE_DATE=$(date +%y-%m-%d)
@@ -64,15 +61,17 @@ jobs:
           echo "Ultima corrida hace $DIFF horas."
 
           if [ $DIFF -ge 24 ]; then
-            echo "Nodos locales offline >24h. Activando failover."
-            python3 scripts/update_products.py
-            python3 scripts/nightly_report.py
+            echo "Nodos locales offline >24h. Activando failover (sin fetch, solo aviso)."
+            # NOTA: NO se llama update_products.py (Bertual API timeout desde GH runners).
+            # Solo avisamos al cliente y mandamos reporte con datos previos si los hay.
+            python3 scripts/notify_pi_offline.py || true
+            python3 scripts/nightly_report.py || true
 
             git config --global user.name "GitHub Action Watchdog"
             git config --global user.email "actions@github.com"
             if [[ -n $(git status -s) ]]; then
               git add .
-              git commit -m "chore: failover recovery update [GH-Actions] $TODAY_TAG [skip ci]"
+              git commit -m "chore: watchdog aviso Pi offline [GH-Actions] $TODAY_TAG [skip ci]"
               git push origin main
             else
               echo "Sin cambios para commitear."
