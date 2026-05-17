@@ -72,8 +72,15 @@ def _file_differs(a, b):
         return True
 
 
-def mirror_data_to_testing_tenant(tenant_slug, tenant_dir):
-    """Copia el .gz mas reciente de data/ raiz al tenant en estado testing."""
+def mirror_data_to_tenant(tenant_slug, tenant_dir):
+    """Copia el .gz mas reciente de data/ raiz al tenant.
+
+    Se invoca para tenants 'testing' (no tienen API propia, viven del raiz) y
+    para tenants 'active' que todavia comparten la API del raiz (caso
+    pre-refactor de update_products). Una vez que update_products escriba
+    directo a tenants/<slug>/data/, podemos saltearlo si el supplier_account
+    es propio del tenant.
+    """
     src_data = os.path.join(BASE_DIR, "data")
     if not os.path.isdir(src_data):
         return False
@@ -163,8 +170,12 @@ def main():
         copied = copy_front(tenant_dir)
         print(f"[sync_tenants] {slug}: front sincronizado ({copied} items)")
 
-        if state == "testing":
-            ok = mirror_data_to_testing_tenant(slug, tenant_dir)
+        # Por ahora todos los tenants (testing y active) reciben mirror del data/
+        # raiz porque update_products aun escribe ahi. Cuando refactoremos el
+        # script para iterar tenants, los 'active' con supplier_account propio
+        # dejaran de necesitar mirror.
+        if state in ("testing", "active"):
+            ok = mirror_data_to_tenant(slug, tenant_dir)
             print(f"[sync_tenants] {slug}: data mirror = {ok}")
 
         site_id = t.get("netlify_site_id")

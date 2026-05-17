@@ -1,0 +1,16 @@
+[build]
+  command = ""
+  publish = "."
+
+[[headers]]
+  for = "/*.json"
+  [headers.values]
+    Content-Type = "application/json"
+    Access-Control-Allow-Origin = "*"
+
+[[headers]]
+  for = "/data/*.gz"
+  [headers.values]
+    Content-Type = "application/json"
+    Content-Encoding = "gzip"
+    Access-Control-Allow-Origin = "*"

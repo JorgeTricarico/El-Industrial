@@ -21,8 +21,13 @@ tenants:
     name: "El Industrial"
     state: active
     netlify_url: "https://el-industrial.netlify.app"
-    bertual_account: "default"
-    notes: "Tenant original. Migracion a tenants/el-industrial/ pendiente (Fase 2)."
+    netlify_site_id: "4b069fdc-f6d3-448f-bcf2-876fa5338782"
+    supplier: "Bertual"
+    supplier_account: "default (credenciales en .env raiz como BERTUAL_USER/PASS)"
+    notes: |
+      Tenant original migrado al molde tenants/el-industrial/. El site Netlify
+      tiene autodeploy git desactivado (stop_builds=true): todos los deploys
+      pasan por sync_tenants.py via API. publish_dir=tenants/el-industrial.
 
   - slug: demo-electricidad
     name: "Demo Electricidad (placeholder: 'Tu Empresa Aquí')"

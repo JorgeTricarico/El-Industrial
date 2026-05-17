@@ -95,8 +95,10 @@ def test_testing_borra_gz_viejos(fake_repo):
     assert "26-05-17" in gz[0].name
 
 
-def test_active_tenant_no_recibe_data_mirror(fake_repo):
+def test_active_tenant_recibe_mirror_durante_transicion(fake_repo):
+    """Mientras update_products siga escribiendo a data/ raiz, los tenants 'active'
+    tambien reciben mirror. Cuando ese script itere tenants, este test se invierte.
+    """
     sync_tenants.main()
     t = fake_repo / "tenants" / "cliente-active"
-    # active tenant trae su data desde su propia update_products. NO debe haber mirror.
-    assert not (t / "data").exists() or not list((t / "data").glob("*.gz"))
+    assert (t / "data" / "lista_precio_26-05-17_json_compres.gz").exists()
