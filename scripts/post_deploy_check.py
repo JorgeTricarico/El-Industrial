@@ -327,32 +327,67 @@ def check_html_smoke(tenant, url):
     return problems
 
 
+def _log_alert(problems, recipients, sent_count, body):
+    """Registra cada alerta enviada a status/alerts.jsonl para auditoria.
+
+    Permite revisar despues 'que se le aviso al admin y cuando', sin depender
+    de scrollear Telegram. El path apunta al status/ del repo raiz (esta es
+    una accion administrativa, no por-tenant).
+    """
+    try:
+        from timeutils import now_ar_iso
+        ts = now_ar_iso()
+    except ImportError:
+        ts = datetime.now().isoformat()
+    status_dir = os.path.join(BASE_DIR, "status")
+    os.makedirs(status_dir, exist_ok=True)
+    entry = {
+        "ts": ts,
+        "source": "post_deploy_check",
+        "problems": problems,
+        "recipients": [r[1] for r in recipients],
+        "sent_count": sent_count,
+        "body": body[:1000],
+    }
+    try:
+        with open(os.path.join(status_dir, "alerts.jsonl"), "a", encoding="utf-8") as f:
+            f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+    except OSError:
+        pass
+
+
 def send_alert(all_problems):
-    """Manda alerta Telegram al admin via la cadena existente."""
+    """Manda alerta Telegram al admin via la cadena existente y registra a log."""
     if not all_problems:
-        return
+        return False
     try:
         sys.path.insert(0, SCRIPT_DIR)
         import clients as _c
     except ImportError:
-        return
+        return False
     token = os.getenv("TELEGRAM_TOKEN")
     legacy = os.getenv("TELEGRAM_CHAT_ID")
     if not token:
-        return
+        return False
     recipients = _c.recipients_for("alert", legacy_chat_id=legacy)
     if not recipients:
-        return
+        _log_alert(all_problems, [], 0, "(sin destinatarios configurados)")
+        return False
     body = "🔴 <b>Post-deploy check FALLO</b>\n"
     body += f"Hora: {datetime.now().strftime('%d/%m %H:%M')}\n\n"
     body += "\n".join(f"• {p}" for p in all_problems)
     body += "\n\n<i>Los compradores podrian estar viendo precios desactualizados. Revisar deploys de Netlify YA.</i>"
     url = f"https://api.telegram.org/bot{token}/sendMessage"
+    sent = 0
     for chat_id, _name in recipients:
         try:
-            requests.post(url, data={"chat_id": chat_id, "text": body, "parse_mode": "HTML"}, timeout=15)
+            r = requests.post(url, data={"chat_id": chat_id, "text": body, "parse_mode": "HTML"}, timeout=15)
+            if r.ok:
+                sent += 1
         except Exception:
             pass
+    _log_alert(all_problems, recipients, sent, body)
+    return sent > 0
 
 
 def main():

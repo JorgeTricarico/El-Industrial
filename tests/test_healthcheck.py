@@ -90,6 +90,7 @@ def test_diagnose_ignora_eventos_sin_campo_api(tmp_path, monkeypatch):
     assert status == "ok"
 
 
+@pytest.mark.allow_real_send
 @patch('healthcheck.requests.post')
 @patch('healthcheck.TELEGRAM_TOKEN', 'fake')
 @patch('healthcheck.TELEGRAM_CHAT_ID', '123')
