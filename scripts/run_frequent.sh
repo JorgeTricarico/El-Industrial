@@ -28,8 +28,11 @@ fi
 
 cd "$PROJECT_ROOT" || exit
 
-# --- Sincronización Inicial ---
-git pull origin main --quiet
+# --- Auto-pull: siempre ejecutar la ultima version ---
+# rebase + autostash para no fallar si quedaron cambios locales (metrics, heartbeat).
+if ! git pull --rebase --autostash origin main --quiet 2>>"$LOG_FILE"; then
+    log_message "ADVERTENCIA: git pull fallo en frequent, continuando con codigo local."
+fi
 
 # --- Evitar ejecución si el nodo ya está actualizado (opcional para frecuente) ---
 # Si queremos que el frecuente siga corriendo para capturar telemetría, no lo bloqueamos por fecha.

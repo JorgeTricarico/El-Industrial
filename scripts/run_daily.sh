@@ -31,16 +31,27 @@ fi
 
 cd "$PROJECT_ROOT" || exit
 
+# --- Auto-pull: siempre ejecutar la ultima version del codigo ---
+# Hacemos pull --rebase --autostash antes que cualquier otra logica para que
+# todos los nodos arranquen con el mismo arbol que main en GitHub.
+# Si el pull falla (conflicto, no hay internet), seguimos con lo que haya
+# para no romper la corrida nocturna; el healthcheck nos avisara.
+log_message "Auto-pull: git pull --rebase --autostash origin main..."
+if git pull --rebase --autostash origin main --quiet 2>>"$LOG_FILE"; then
+    NEW_HEAD=$(git rev-parse --short HEAD 2>/dev/null)
+    log_message "Pull OK. HEAD=$NEW_HEAD"
+else
+    log_message "ADVERTENCIA: git pull fallo, continuando con codigo local."
+fi
+
 # --- Dedup remoto vía commit-marker ---
 # Cualquier nodo (Pi, Mint o GH Actions) marca su corrida con el tag [run:YY-MM-DD]
 # en el commit. Antes de ejecutar, verificamos si ya hay un commit de hoy.
 TODAY_TAG="[run:$FILE_DATE]"
-if git fetch origin --quiet 2>/dev/null; then
-    LAST_COMMIT_MSG=$(git log origin/main --format=%s -5 2>/dev/null || echo "")
-    if echo "$LAST_COMMIT_MSG" | grep -qF "$TODAY_TAG"; then
-        log_message "Otro nodo ya ejecuto hoy ($TODAY_TAG). Saliendo limpio."
-        exit 0
-    fi
+LAST_COMMIT_MSG=$(git log origin/main --format=%s -5 2>/dev/null || echo "")
+if echo "$LAST_COMMIT_MSG" | grep -qF "$TODAY_TAG"; then
+    log_message "Otro nodo ya ejecuto hoy ($TODAY_TAG). Saliendo limpio."
+    exit 0
 fi
 
 # --- Logica de Nodo Secundario (Iqual-Mint): verificacion adicional via raw URL ---

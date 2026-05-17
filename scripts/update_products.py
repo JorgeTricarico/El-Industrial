@@ -36,14 +36,31 @@ GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 def get_daily_accum_path():
     return os.path.join(STATUS_DIR, "daily_accum.json")
 
+def _git_head_short():
+    """Devuelve el SHA corto del HEAD actual. Si falla, retorna 'unknown'."""
+    try:
+        out = subprocess.check_output(
+            ["git", "-C", BASE_DIR, "rev-parse", "--short", "HEAD"],
+            stderr=subprocess.DEVNULL,
+        )
+        return out.decode().strip()
+    except (subprocess.CalledProcessError, FileNotFoundError, OSError):
+        return "unknown"
+
+
 def update_heartbeat(host, status="ok", duration_s=0):
-    """Heartbeat con status enriquecido. Se actualiza tanto en exito como en fallo."""
+    """Heartbeat con status enriquecido. Se actualiza tanto en exito como en fallo.
+
+    Incluye el SHA corto del HEAD para verificar que cada nodo pulleo la
+    ultima version del codigo antes de correr.
+    """
     os.makedirs(STATUS_DIR, exist_ok=True)
     payload = {
         "last_run": datetime.now().isoformat(),
         "node": host,
         "status": status,
         "duration_s": round(duration_s, 2),
+        "version": _git_head_short(),
     }
     try:
         with open(os.path.join(STATUS_DIR, "heartbeat.json"), "w") as f:
