@@ -1,0 +1,51 @@
+name: Weekly System Audit
+
+# Corre los lunes 11:00 UTC (8:00 AM AR). Reporta al admin todo lo que
+# se acumula silenciosamente: cmd=hugo residual en Netlify, claves
+# faltantes en .env, nodos offline > 7d, data/archive con .gz > 90d,
+# workflows en racha de fallos. Ver scripts/system_audit.py.
+
+on:
+  schedule:
+    - cron: '0 11 * * 1'
+  workflow_dispatch:
+
+env:
+  TZ: America/Argentina/Buenos_Aires
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run system audit
+        env:
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          set +e
+          python3 scripts/system_audit.py
+          EC=$?
+          set -e
+          echo "system_audit exit code: $EC"
+          if [ $EC -ne 0 ]; then
+            echo "::error::system_audit.py crasheo (exit $EC)"
+            exit $EC
+          fi
