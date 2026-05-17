@@ -1,0 +1,32 @@
+# Registro de tenants (clientes) activos del servicio.
+#
+# Cada entrada se corresponde con una carpeta tenants/<slug>/ self-contained:
+#   - index.html, style.css, js/    -> front clonado desde la raiz del repo
+#   - config/branding.json          -> nombre, color, logo
+#   - config/config.json            -> markup, iva, descuentos especificos
+#   - config/clients.yml            -> destinatarios Telegram de este tenant
+#   - data/*.gz                     -> precios del cliente
+#   - latest-json-filename.txt      -> pointer al ultimo dataset
+#   - netlify.toml                  -> config del site Netlify de este cliente
+#
+# Cada tenant tiene su propio Netlify site con publish dir = tenants/<slug>.
+#
+# Estado:
+#   active   = en produccion, recibe data + cron + Telegram
+#   testing  = piloto / mock data, NO se actualiza automatico desde Bertual aun
+#   inactive = pausado
+
+tenants:
+  - slug: el-industrial
+    name: "El Industrial"
+    state: active
+    netlify_url: "https://el-industrial.netlify.app"
+    bertual_account: "default"
+    notes: "Tenant original. Migracion a tenants/el-industrial/ pendiente (Fase 2)."
+
+  - slug: ferreteria-prueba
+    name: "Ferreteria Prueba"
+    state: testing
+    netlify_url: "(crear site en dashboard Netlify y pegar URL aqui)"
+    bertual_account: "(no aplica - usa data espejo de el-industrial)"
+    notes: "Tenant de validacion del refactor multi-tenant. Comparte data con el-industrial hasta que tenga su propia API Bertual."

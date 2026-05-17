@@ -1,0 +1,24 @@
+# Netlify config para el sitio de Ferreteria Prueba.
+# Cuando crees el site en el dashboard de Netlify:
+#   Repository: JorgeTricarico/El-Industrial
+#   Branch:     main
+#   Base directory: tenants/ferreteria-prueba
+#   Build command: (vacio)
+#   Publish directory: tenants/ferreteria-prueba
+
+[build]
+  command = ""
+  publish = "."
+
+[[headers]]
+  for = "/*.json"
+  [headers.values]
+    Content-Type = "application/json"
+    Access-Control-Allow-Origin = "*"
+
+[[headers]]
+  for = "/data/*.gz"
+  [headers.values]
+    Content-Type = "application/json"
+    Content-Encoding = "gzip"
+    Access-Control-Allow-Origin = "*"

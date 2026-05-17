@@ -1,0 +1,8 @@
+# Destinatarios de Telegram especificos de Ferreteria Prueba.
+# Mismo formato que el config/clients.yml global de El Industrial.
+clients:
+  - name: "Jorge dev (interno)"
+    telegram_chat_id: 6425231391
+    enabled: true
+    role: admin
+    notes: "Recibe reportes de este tenant + alertas tecnicas."

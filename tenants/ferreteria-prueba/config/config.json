@@ -1,0 +1,7 @@
+{
+  "markup": 0.0,
+  "iva": 0.0,
+  "resale_discount": 0.20,
+  "apply_discounts": false,
+  "_note": "Config local de Ferreteria Prueba. Override del config/config.json compartido."
+}

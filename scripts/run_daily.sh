@@ -113,6 +113,9 @@ if [ $PY_EXIT_CODE -ne 0 ]; then
     exit 1
 fi
 
+log_message "Sincronizando tenants (front + data mirror para testing)..."
+python3 "$SCRIPT_DIR/sync_tenants.py" >>"$LOG_FILE" 2>&1 || log_message "ADVERTENCIA: sync_tenants fallo, continuando."
+
 log_message "Ejecutando reporte ejecutivo nocturno..."
 python3 "$SCRIPT_DIR/nightly_report.py"
 NR_EXIT_CODE=$?

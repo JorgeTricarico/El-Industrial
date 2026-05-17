@@ -1,0 +1,11 @@
+{
+  "slug": "ferreteria-prueba",
+  "siteName": "Ferreteria Prueba",
+  "tagline": "Catalogo demo multi-tenant",
+  "logoUrl": "tornillo.png",
+  "faviconUrl": "tornillo.png",
+  "primaryColor": "#1e293b",
+  "accentColor": "#2563eb",
+  "contactWpp": "",
+  "socialLinks": {}
+}
