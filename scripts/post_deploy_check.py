@@ -105,44 +105,48 @@ def check_against_supplier(tenant, public_parsed):
     Retorna lista de problemas (vacia si todo OK o si el proveedor no es accesible).
     """
     problems = []
-    supplier = (tenant.get("supplier") or "").strip().lower()
-    if supplier != "bertual":
-        return []  # otros proveedores aun no implementados (Haedo, etc.)
+    supplier_name = tenant.get("supplier") or ""
     try:
-        from bertual_api import BertualAPIClient
-        import update_products as up
+        import suppliers as _suppliers
     except ImportError as e:
-        return [f"{tenant.get('slug')}: no se pudo importar bertual_api: {e}"]
+        return [f"{tenant.get('slug')}: no se pudo importar suppliers: {e}"]
     try:
-        client = BertualAPIClient()
-        raw_products = client.fetch_products()
-    except Exception as e:
-        # API no accesible desde este host (timeout desde GH Actions es esperado).
-        # Silencioso: no es un fallo del sistema, solo "no podemos verificar desde aca".
-        print(f"[supplier] {tenant.get('slug')}: API del proveedor no accesible desde este host ({type(e).__name__}). Skip.")
-        return []
+        supplier_obj = _suppliers.get(supplier_name)
+    except ValueError:
+        return []  # supplier no registrado (ej. Haedo stub) — no verificamos
 
-    if not isinstance(raw_products, list) or not raw_products:
-        return [f"{tenant.get('slug')}: API del proveedor devolvio respuesta inesperada o vacia."]
-
-    # Aplicar transform_item del tenant. ATENCION: transform_item lee el config
-    # GLOBAL (up.config), que apunta al config.json del raiz. Para multi-tenant
-    # estricto deberiamos parsear el config del tenant. Por ahora, si el tenant
-    # tiene un config propio, lo cargamos.
+    # Config del tenant (markup, iva)
     tenant_dir = os.path.join(TENANTS_DIR, tenant.get("slug", ""))
     tenant_config_path = os.path.join(tenant_dir, "config", "config.json")
+    tenant_config = {"markup": 0.0, "iva": 0.0}
     if os.path.exists(tenant_config_path):
         try:
             with open(tenant_config_path, "r", encoding="utf-8") as f:
-                up.config.update(json.load(f))
+                tenant_config.update(json.load(f))
         except (OSError, json.JSONDecodeError):
             pass
 
-    # Aplicar transform a TODOS los items del proveedor para tener el catalogo final
+    try:
+        raw_products = supplier_obj.fetch_products(dict(os.environ))
+    except Exception as e:
+        # API no accesible desde este host (timeout desde GH Actions es esperado).
+        print(f"[supplier] {tenant.get('slug')}: API del proveedor no accesible desde este host ({type(e).__name__}). Skip.")
+        return []
+
+    if not isinstance(raw_products, list):
+        return [f"{tenant.get('slug')}: API del proveedor devolvio respuesta inesperada."]
+    if not raw_products:
+        # Stub o supplier sin API real (ej. Haedo) — no podemos comparar
+        # contra el proveedor, pero el resto del check (data local vs web)
+        # ya corrio. No es un fallo.
+        print(f"[supplier] {tenant.get('slug')}: supplier sin items (stub). Skip comparacion.")
+        return []
+
+    # Aplicar transform a TODOS los items del proveedor
     supplier_normalized = {}
     for raw in raw_products:
         try:
-            t = up.transform_item(raw)
+            t = supplier_obj.transform_item(raw, tenant_config)
             if t.get("producto"):
                 supplier_normalized[str(t["producto"])] = str(t["precio"])
         except (TypeError, ValueError, KeyError):

@@ -56,6 +56,7 @@ Lista canonica al 2026-05-17 (mantener sincronizada al sumar módulos):
 - `update_products` — `STATUS_DIR`
 - `sync_tenants` — (futuro: HTTP a Netlify, ver Regla #1bis)
 - `system_audit` — `send_alert`
+- `alert_throttle` — `STATUS_DIR`
 
 ### Cómo agregar un módulo nuevo con efectos externos
 
@@ -112,6 +113,43 @@ sistema produce" → "lo que el cliente ve"**.
   que puede romperse silenciosamente (causa raiz del bug del 19 dias).
 - Cualquier site nuevo se crea con `cmd=''` y `dir='tenants/<slug>'`.
 - `scripts/system_audit.py` chequea esto semanalmente (build_settings drift).
+
+## Multi-tenancy (Fase 2B)
+
+Cada cliente vive en `tenants/<slug>/` con su data, status, config y branding.
+`tenants/_registry.yml` es la fuente de verdad: slug, state, netlify_site_id,
+supplier.
+
+Pipeline iterando tenants:
+- `update_products.py` itera tenants `state=active`. Para cada uno: carga
+  supplier adapter desde `scripts/suppliers/`, credenciales (de
+  `tenants/<slug>/.env` si existe, sino del `.env` raiz), config, fetcha,
+  diff, escribe `tenants/<slug>/data/lista_precio_*.gz` + accum.
+- `nightly_report.py` itera tenants. Para cada uno: lee
+  `tenants/<slug>/status/daily_accum.json`, manda al canal del tenant
+  (`tenants/<slug>/config/clients.yml`).
+- `scripts/suppliers/__init__.py` registry: `Bertual`, `Electronica Haedo`.
+
+### Cómo agregar un proveedor nuevo
+
+1. Crear `scripts/suppliers/<nombre>.py` con clase que herede de `Supplier`
+   (ver `base.py`). Implementar `name`, `required_creds`, `fetch_products(creds)`,
+   `transform_item(raw, config)`.
+2. Registrar en `scripts/suppliers/__init__.py` `_REGISTRY`.
+3. Sumar `required_creds` a `system_audit.SUPPLIER_REQUIRED_KEYS` para que
+   el audit semanal detecte keys faltantes.
+4. Test en `tests/test_suppliers.py`.
+
+### Cómo agregar un tenant nuevo
+
+1. `tenants/<slug>/` con `config/{branding.json, config.json, clients.yml}`,
+   `index.html`, `style.css`, `js/`, `netlify.toml`. Usar tenants existentes
+   como template.
+2. Entrada en `tenants/_registry.yml` con slug, state (testing primero),
+   netlify_site_id, supplier.
+3. Si el supplier necesita creds propias, `tenants/<slug>/.env`. Si no,
+   usa el `.env` raiz.
+4. Site Netlify: crear con `stop_builds=true` y `dir=tenants/<slug>`.
 
 ## Canal Telegram separado (tecnico vs comercial)
 

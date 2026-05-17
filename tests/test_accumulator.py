@@ -21,8 +21,8 @@ def test_accumulator_multiple_updates(tmp_path):
         "new": [],
         "updated": [{"code": "P01", "name": "Prod 1", "old": "100.00", "new": "110.00"}]
     }
-    update_products.update_accumulator(changes1)
-    
+    update_products.update_accumulator(changes1, str(tmp_path))
+
     with open(accum_path, "r") as f:
         data = json.load(f)
         assert data["updated"]["P01"]["new"] == "110.00"
@@ -33,7 +33,7 @@ def test_accumulator_multiple_updates(tmp_path):
         "new": [],
         "updated": [{"code": "P01", "name": "Prod 1", "old": "110.00", "new": "120.00"}]
     }
-    update_products.update_accumulator(changes2)
+    update_products.update_accumulator(changes2, str(tmp_path))
     
     with open(accum_path, "r") as f:
         data = json.load(f)
@@ -50,10 +50,10 @@ def test_accumulator_new_then_update(tmp_path):
     accum_path = os.path.join(update_products.STATUS_DIR, "daily_accum.json")
     
     # 1. Aparece como nuevo a 500
-    update_products.update_accumulator({"new": [{"code": "N01", "name": "Nuevo", "new": "500.00"}], "updated": []})
-    
+    update_products.update_accumulator({"new": [{"code": "N01", "name": "Nuevo", "new": "500.00"}], "updated": []}, str(tmp_path))
+
     # 2. Se actualiza a 550
-    update_products.update_accumulator({"new": [], "updated": [{"code": "N01", "name": "Nuevo", "old": "500.00", "new": "550.00"}]})
+    update_products.update_accumulator({"new": [], "updated": [{"code": "N01", "name": "Nuevo", "old": "500.00", "new": "550.00"}]}, str(tmp_path))
     
     with open(accum_path, "r") as f:
         data = json.load(f)
@@ -73,7 +73,7 @@ def test_accumulator_corrupt_json_recovery(tmp_path):
         f.write("{ esta corrompido ...")
         
     # No debería lanzar excepción
-    update_products.update_accumulator({"new": [{"code": "P1", "new": "10"}], "updated": []})
+    update_products.update_accumulator({"new": [{"code": "P1", "new": "10"}], "updated": []}, str(tmp_path))
     
     assert os.path.exists(accum_path)
     with open(accum_path, "r") as f:

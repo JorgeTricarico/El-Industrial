@@ -182,6 +182,21 @@ def test_sanitize_remueve_emojis_alarma():
 
 # ============ MAIN FLOW (smoke test E2E) ============
 
+def _setup_tenant_with_accum(tmp_path, slug="alpha", accum=None):
+    """Helper: crea estructura tenants/<slug>/ con daily_accum.json para tests."""
+    accum = accum if accum is not None else {
+        "updated": {"X1": {"code": "X1", "name": "Cable test",
+                           "old": "100.0", "new": "110.0", "marca": "TEST"}}
+    }
+    tenants_dir = tmp_path / "tenants"
+    tenant_root = tenants_dir / slug
+    (tenant_root / "status").mkdir(parents=True)
+    (tenant_root / "status" / "daily_accum.json").write_text(json.dumps(accum))
+    registry = tenants_dir / "_registry.yml"
+    registry.write_text(f"tenants:\n  - slug: {slug}\n    state: active\n")
+    return tenants_dir, tenant_root
+
+
 @patch('nightly_report.GEMINI_API_KEY', 'fake')
 @patch('nightly_report.CEREBRAS_API_KEY', 'fake')
 @patch('nightly_report.SAMBANOVA_API_KEY', 'fake')
@@ -189,14 +204,10 @@ def test_sanitize_remueve_emojis_alarma():
 @patch('nightly_report.requests.post')
 def test_main_envia_telegram_aunque_llm_falle(mock_post, mock_send, tmp_path, monkeypatch):
     """Smoke test: con los 3 LLMs caidos, main() igual llama a send_telegram con plantilla."""
-    status_dir = tmp_path / "status"
-    status_dir.mkdir()
-    (status_dir / "daily_accum.json").write_text(json.dumps({
-        "updated": {
-            "X1": {"code": "X1", "name": "Cable test", "old": "100.0", "new": "110.0", "marca": "TEST"}
-        }
-    }))
-    monkeypatch.setattr(nightly_report, "STATUS_DIR", str(status_dir))
+    tenants_dir, _ = _setup_tenant_with_accum(tmp_path)
+    monkeypatch.setattr(nightly_report, "STATUS_DIR", str(tmp_path / "status"))
+    monkeypatch.setattr(nightly_report, "TENANTS_DIR", str(tenants_dir))
+    monkeypatch.setattr(nightly_report, "REGISTRY", str(tenants_dir / "_registry.yml"))
 
     m = MagicMock()
     m.raise_for_status.side_effect = Exception("LLM caido")
@@ -210,9 +221,91 @@ def test_main_envia_telegram_aunque_llm_falle(mock_post, mock_send, tmp_path, mo
     assert mock_send.called, "send_telegram debe llamarse aunque los LLMs fallen"
     sent_msg = mock_send.call_args[0][0]
     assert "Lista del dia" in sent_msg
-    # La plantilla debe contener al menos una de estas señales del item de prueba
     assert any(s in sent_msg for s in ["TEST", "Cable test", "1 productos"]), \
         f"mensaje plantilla sin datos del item: {sent_msg!r}"
+
+
+# ============ PROCESS TENANT REPORT (Fase 2B) ============
+
+@patch('nightly_report.send_telegram')
+@patch('nightly_report.get_ai_analysis')
+def test_process_tenant_report_skips_inactive(mock_ai, mock_send, tmp_path, monkeypatch):
+    monkeypatch.setattr(nightly_report, "TENANTS_DIR", str(tmp_path / "tenants"))
+    res = nightly_report.process_tenant_report({"slug": "x", "state": "inactive"})
+    assert res["status"].startswith("skip")
+    assert not mock_send.called
+
+
+@patch('nightly_report.send_telegram')
+@patch('nightly_report.get_ai_analysis')
+def test_process_tenant_report_skips_no_accum(mock_ai, mock_send, tmp_path, monkeypatch):
+    monkeypatch.setattr(nightly_report, "TENANTS_DIR", str(tmp_path / "tenants"))
+    res = nightly_report.process_tenant_report({"slug": "alpha", "state": "active"})
+    assert res["status"] == "no_accum"
+    assert not mock_send.called
+
+
+@patch('nightly_report.send_telegram', return_value=True)
+@patch('nightly_report.get_ai_analysis', return_value=("respuesta AI", "gemini"))
+def test_process_tenant_report_sends_with_tenant_branding(mock_ai, mock_send, tmp_path, monkeypatch):
+    tenants_dir, tenant_root = _setup_tenant_with_accum(tmp_path, slug="demo-elec")
+    # Branding del tenant
+    (tenant_root / "config").mkdir()
+    (tenant_root / "config" / "branding.json").write_text(json.dumps({"siteName": "Mi Empresa"}))
+
+    monkeypatch.setattr(nightly_report, "TENANTS_DIR", str(tenants_dir))
+    monkeypatch.setattr(nightly_report, "STATUS_DIR", str(tmp_path / "status"))
+
+    res = nightly_report.process_tenant_report({"slug": "demo-elec", "state": "active"})
+    assert res["status"] == "ok"
+    assert res["items"] == 1
+    assert res["sent"] is True
+
+    msg = mock_send.call_args[0][0]
+    assert "Mi Empresa" in msg, "el header debe llevar el siteName del tenant"
+    # Pasar clients_path apuntando al yaml del tenant
+    kwargs = mock_send.call_args[1]
+    assert "demo-elec" in kwargs.get("clients_path", "")
+
+
+@patch('nightly_report.send_telegram', return_value=True)
+@patch('nightly_report.get_ai_analysis', return_value=("respuesta AI", "gemini"))
+def test_process_tenant_archives_accum(mock_ai, mock_send, tmp_path, monkeypatch):
+    tenants_dir, tenant_root = _setup_tenant_with_accum(tmp_path)
+    monkeypatch.setattr(nightly_report, "TENANTS_DIR", str(tenants_dir))
+    monkeypatch.setattr(nightly_report, "STATUS_DIR", str(tmp_path / "status"))
+
+    nightly_report.process_tenant_report({"slug": "alpha", "state": "active"})
+
+    # accum se movio a archive/
+    assert not (tenant_root / "status" / "daily_accum.json").exists()
+    archived = list((tenant_root / "status" / "archive").iterdir())
+    assert len(archived) == 1
+
+
+@patch('nightly_report.send_telegram', return_value=True)
+@patch('nightly_report.get_ai_analysis', return_value=("AI text", "gemini"))
+def test_main_itera_solo_active(mock_ai, mock_send, tmp_path, monkeypatch):
+    """main() debe procesar solo tenants con state=active."""
+    tenants_dir = tmp_path / "tenants"
+    for slug, state in [("alpha", "active"), ("beta", "testing"), ("gamma", "inactive")]:
+        d = tenants_dir / slug / "status"
+        d.mkdir(parents=True)
+        (d / "daily_accum.json").write_text(json.dumps({"updated": {}}))
+    (tenants_dir / "_registry.yml").write_text(
+        "tenants:\n"
+        "  - slug: alpha\n    state: active\n"
+        "  - slug: beta\n    state: testing\n"
+        "  - slug: gamma\n    state: inactive\n"
+    )
+    monkeypatch.setattr(nightly_report, "TENANTS_DIR", str(tenants_dir))
+    monkeypatch.setattr(nightly_report, "REGISTRY", str(tenants_dir / "_registry.yml"))
+    monkeypatch.setattr(nightly_report, "STATUS_DIR", str(tmp_path / "status"))
+
+    nightly_report.main()
+
+    # Solo alpha procesado -> 1 llamada a send_telegram
+    assert mock_send.call_count == 1
 
 
 # ============ ROTACION DE ARCHIVE ============

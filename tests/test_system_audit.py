@@ -62,8 +62,9 @@ def test_check_env_keys_all_present(monkeypatch, tmp_path):
     env_path.write_text(
         "TELEGRAM_TOKEN=abc\n"
         "NETLIFY_AUTH_TOKEN=def\n"
-        "BERTUAL_USER=u\n"
-        "BERTUAL_PASS=p\n"
+        "BERTUAL_CUIT=u\n"
+        "BERTUAL_PASSWORD=p\n"
+        "BERTUAL_CLIENT_ID=c\n"
         "GEMINI_API_KEY=x\n"
         "CEREBRAS_API_KEY=y\n"
         "SAMBANOVA_API_KEY=z\n"
@@ -102,8 +103,9 @@ def test_check_env_keys_missing_supplier_keys(monkeypatch, tmp_path):
     monkeypatch.setattr(system_audit, "ENV_PATH", str(env_path))
     tenants = [{"slug": "alpha", "state": "active", "supplier": "Bertual"}]
     problems = system_audit.check_env_keys(tenants)
-    assert any("BERTUAL_USER" in p for p in problems)
-    assert any("BERTUAL_PASS" in p for p in problems)
+    assert any("BERTUAL_CUIT" in p for p in problems)
+    assert any("BERTUAL_PASSWORD" in p for p in problems)
+    assert any("BERTUAL_CLIENT_ID" in p for p in problems)
 
 
 def test_check_env_keys_skips_testing_state(monkeypatch, tmp_path):

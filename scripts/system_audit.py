@@ -37,7 +37,7 @@ TENANT_DEPLOY_STALE_HOURS = int(os.getenv("AUDIT_TENANT_DEPLOY_STALE_HOURS", "48
 # Claves que cada supplier necesita en .env (raiz por ahora; en Fase 2B,
 # por tenant). Mantener sincronizado con scripts/suppliers/.
 SUPPLIER_REQUIRED_KEYS = {
-    "Bertual": ("BERTUAL_USER", "BERTUAL_PASS"),
+    "Bertual": ("BERTUAL_CUIT", "BERTUAL_PASSWORD", "BERTUAL_CLIENT_ID"),
     "Electronica Haedo": (),  # stub, no API
 }
 

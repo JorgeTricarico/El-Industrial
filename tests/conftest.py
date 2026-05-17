@@ -15,13 +15,20 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(__file__)), "scripts"))
 
+# Forzar import temprano de alert_throttle para que la fixture autouse de
+# STATUS_DIR pueda monkeypatchearlo aunque ningun test lo importe directo.
+try:
+    import alert_throttle  # noqa: F401
+except ImportError:
+    pass
+
 
 @pytest.fixture(autouse=True)
 def _isolate_status_dir(tmp_path, monkeypatch):
     # No creamos el directorio: cada script hace os.makedirs(..., exist_ok=True)
     # cuando lo necesita. Crear aca rompe tests que esperan un dir vacio.
     status_dir = tmp_path / "status"
-    for mod_name in ("nightly_report", "update_products", "healthcheck", "system_audit"):
+    for mod_name in ("nightly_report", "update_products", "healthcheck", "system_audit", "alert_throttle"):
         if mod_name in sys.modules:
             monkeypatch.setattr(sys.modules[mod_name], "STATUS_DIR", str(status_dir), raising=False)
     yield status_dir

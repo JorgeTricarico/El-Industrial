@@ -1,117 +1,229 @@
-import pytest
-from unittest.mock import patch, MagicMock
+"""Tests para scripts/update_products.py (Fase 2B multi-tenant).
+
+Algunos tests se movieron a test_suppliers.py (transform_item, calculate_price)
+porque ahora viven en scripts/suppliers/bertual.py. Acá quedan los que son
+especificos de update_products: heartbeat, accum, fetch_with_retries,
+node_status, y los nuevos de process_tenant.
+"""
+import json
 import os
 import sys
-import json
+from unittest.mock import MagicMock, patch
 
-sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'scripts'))
+import pytest
+
 import update_products
+from suppliers.bertual import BertualSupplier
 
-def test_calculate_price():
-    """Verifica que el cálculo de IVA y Markup sea exacto."""
-    update_products.config.update({"markup": 0.50, "iva": 0.21, "resale_discount": 0.20})
-    neto = 100
-    # Cálculo esperado: 100 * 1.21 * 1.50 = 181.5
-    assert update_products.calculate_price(neto) == 181.5
 
-def test_security_invariant_no_discounts():
+# ---------- SEGURIDAD: el invariante critico de precio ----------
+
+def test_security_invariant_no_discounts_via_supplier():
+    """TEST DE SEGURIDAD: el precio NUNCA debe llevar el resale_discount.
+    transform_item solo aplica markup + iva. resale_discount es ajeno al pipeline.
     """
-    TEST DE SEGURIDAD (CRÍTICO): Garantiza que NUNCA se aplique un descuento
-    al precio de lista en la transformación de items.
-    """
-    update_products.config.update({"markup": 0.50, "iva": 0.21, "resale_discount": 0.20})
-    item_bruto = {
-        "Precio": 1000, 
-        "Articulo_Corto": "GUARD-01", 
-        "Descripcion": "Test Seguridad",
-        "Moneda": "PES"
-    }
-    
-    # Transformación
-    result = update_products.transform_item(item_bruto)
-    precio_final = float(result["precio"])
-    
-    # El precio de venta DEBE ser 1815.00 (1000 * 1.21 * 1.50)
-    # Si se aplicara el 'resale_discount' de 20%, daría 1452.00.
-    
-    assert precio_final == 1815.0, "FALLO DE SEGURIDAD: El precio calculado es incorrecto."
-    assert precio_final != 1452.0, "FALLO DE SEGURIDAD: Se detectó la aplicación de un descuento de costo/resale!"
+    s = BertualSupplier()
+    raw = {"Precio": 1000, "Articulo_Corto": "GUARD-01", "Descripcion": "x", "Moneda": "PES"}
+    out = s.transform_item(raw, {"markup": 0.50, "iva": 0.21, "resale_discount": 0.20})
+    precio_final = float(out["precio"])
+    assert precio_final == 1815.0, "El precio calculado no debe llevar descuento"
+    assert precio_final != 1452.0, "Se detecto resale_discount aplicado al precio publico"
+
+
+def test_security_price_never_crashes_on_zero():
+    """Si Precio=0 por error del API, no debe crashear; el pipeline lo
+    descartara por validacion superior pero la transformacion sigue funcionando."""
+    s = BertualSupplier()
+    raw = {"Precio": 0, "Moneda": "PES", "Articulo": "X", "Descripcion": "y"}
+    out = s.transform_item(raw, {"markup": 0.5, "iva": 0.21})
+    assert float(out["precio"]) == 0.0
+
+
+# ---------- moneda mapping (BertualSupplier) ----------
 
 def test_transform_moneda_mapping():
-    """Verifica que el mapeo de símbolos de moneda sea correcto."""
-    items = [
-        {"Precio": 10, "Moneda": "PES", "expected": "$"},
-        {"Precio": 10, "Moneda": "ARS", "expected": "$"},
-        {"Precio": 10, "Moneda": "DOL", "expected": "U$S"},
-        {"Precio": 10, "Moneda": "USD", "expected": "U$S"},
-        {"Precio": 10, "Moneda": "EUR", "expected": "EUR"}
+    s = BertualSupplier()
+    cases = [
+        ("PES", "$"), ("ARS", "$"),
+        ("DOL", "U$S"), ("USD", "U$S"),
+        ("EUR", "EUR"),
     ]
-    for case in items:
-        res = update_products.transform_item(case)
-        assert res["moneda"] == case["expected"]
+    for monStr, expected in cases:
+        raw = {"Precio": 10, "Moneda": monStr, "Articulo": "X", "Descripcion": "y"}
+        assert s.transform_item(raw, {})["moneda"] == expected
+
+
+# ---------- node status ----------
 
 @patch("subprocess.check_output")
 def test_node_status_logic(mock_ping):
-    """Verifica la logica de deteccion de nodos online/offline."""
     import subprocess
-    # Simular Online
     mock_ping.return_value = b"bytes"
     assert update_products.check_node_status("100.1.1.1") == "online"
-
-    # Simular Offline (host no responde)
     mock_ping.side_effect = subprocess.CalledProcessError(1, ["ping"])
     assert update_products.check_node_status("100.1.1.1") == "offline"
-
-    # Simular ping no instalado
     mock_ping.side_effect = FileNotFoundError("ping no encontrado")
     assert update_products.check_node_status("100.1.1.1") == "offline"
 
+
+# ---------- fetch_with_retries (nueva signature: supplier + creds) ----------
+
 @patch("time.sleep")
 def test_api_resilience_retries(mock_sleep):
-    """Garantiza que el sistema reintente 3 veces ante fallos de la API."""
-    mock_client = MagicMock()
-    # Falla 2 veces y tiene éxito a la tercera
-    mock_client.fetch_products.side_effect = [
+    """Falla 2 veces, succeed la 3era."""
+    supplier = MagicMock()
+    supplier.name = "Fake"
+    supplier.fetch_products.side_effect = [
         Exception("Timeout"),
-        Exception("500 Server Error"),
-        [{"Precio": 100}] * 110 # Éxito con 110 productos
+        Exception("500"),
+        [{"Precio": 100}] * 110,
     ]
-    
-    data, lat = update_products.fetch_with_retries(mock_client)
-    
+    data, _ = update_products.fetch_with_retries(supplier, creds={})
     assert len(data) == 110
-    assert mock_client.fetch_products.call_count == 3
+    assert supplier.fetch_products.call_count == 3
 
-def test_accumulator_robustness_corrupt_file(tmp_path, monkeypatch):
-    """Verifica que el acumulador se recupere si el archivo JSON está corrupto."""
-    monkeypatch.setattr(update_products, "STATUS_DIR", str(tmp_path))
+
+# ---------- accumulator ----------
+
+def test_accumulator_robustness_corrupt_file(tmp_path):
+    """Si el archivo esta corrupto, se inicializa nuevo."""
     accum_file = tmp_path / "daily_accum.json"
-
-    # Escribir basura en el archivo
-    with open(accum_file, "w") as f: f.write("esto no es un json { {")
-
-    # El sistema no debe crashear, debe inicializar un acumulador nuevo
+    accum_file.write_text("esto no es un json { {")
     new_changes = {"new": [{"code": "ABC", "name": "Test"}], "updated": []}
-    update_products.update_accumulator(new_changes)
-
+    update_products.update_accumulator(new_changes, str(tmp_path))
     with open(accum_file, "r") as f:
         data = json.load(f)
-        assert "ABC" in data["new"]
+    assert "ABC" in data["new"]
+
+
+def test_accumulator_merges_repeat_updates(tmp_path):
+    """Si llega update sobre item ya updateado, gana el nuevo precio."""
+    update_products.update_accumulator(
+        {"new": [], "updated": [{"code": "X", "name": "x", "old": "10", "new": "12"}]},
+        str(tmp_path),
+    )
+    update_products.update_accumulator(
+        {"new": [], "updated": [{"code": "X", "name": "x", "old": "12", "new": "15"}]},
+        str(tmp_path),
+    )
+    with open(tmp_path / "daily_accum.json") as f:
+        data = json.load(f)
+    assert data["updated"]["X"]["new"] == "15"
+
 
 def test_heartbeat_robustness_corrupt_file(tmp_path, monkeypatch):
-    """Verifica que el heartbeat maneje archivos corruptos sin morir."""
     monkeypatch.setattr(update_products, "STATUS_DIR", str(tmp_path))
-    heartbeat_file = tmp_path / "heartbeat.json"
-
-    with open(heartbeat_file, "w") as f: f.write("corrupto")
-
-    # No debe dar error al actualizar
+    (tmp_path / "heartbeat.json").write_text("corrupto")
     update_products.update_heartbeat("test-node")
-    assert heartbeat_file.exists()
+    assert (tmp_path / "heartbeat.json").exists()
 
-def test_security_price_never_zero():
-    """Garantiza que el sistema falle si por algún error el precio calculado es cero."""
-    item = {"Precio": 0, "Moneda": "PES"}
-    # El sistema debería manejarlo o nosotros deberíamos asegurar que no rompa
-    res = update_products.transform_item(item)
-    assert float(res["precio"]) == 0.0
+
+# ---------- diff_items ----------
+
+def test_diff_items_detects_new_and_updated():
+    new_items = [
+        {"producto": "A", "detalle": "a", "precio": "10.00"},
+        {"producto": "B", "detalle": "b", "precio": "20.00"},
+        {"producto": "C", "detalle": "c", "precio": "30.00"},  # nuevo
+    ]
+    old_data = {
+        "A": {"producto": "A", "precio": "10.00"},  # sin cambio
+        "B": {"producto": "B", "precio": "18.00"},  # update
+    }
+    changes = update_products.diff_items(new_items, old_data)
+    assert len(changes["new"]) == 1
+    assert changes["new"][0]["code"] == "C"
+    assert len(changes["updated"]) == 1
+    assert changes["updated"][0]["code"] == "B"
+    assert changes["updated"][0]["new"] == "20.00"
+
+
+# ---------- process_tenant ----------
+
+def test_process_tenant_skips_inactive():
+    res = update_products.process_tenant({"slug": "x", "supplier": "Bertual", "state": "inactive"})
+    assert res["status"].startswith("skip")
+
+
+def test_process_tenant_unknown_supplier():
+    res = update_products.process_tenant({
+        "slug": "x", "supplier": "ProveedorInexistente", "state": "active",
+    })
+    assert res["status"] == "supplier_unknown"
+
+
+def test_process_tenant_creds_missing(monkeypatch):
+    """Si faltan creds requeridas, el tenant no se procesa."""
+    monkeypatch.setenv("BERTUAL_CUIT", "")  # vacio
+    monkeypatch.delenv("BERTUAL_PASSWORD", raising=False)
+    monkeypatch.delenv("BERTUAL_CLIENT_ID", raising=False)
+    # forzar reload de os.environ en la funcion
+    res = update_products.process_tenant({
+        "slug": "demo", "supplier": "Bertual", "state": "active",
+    })
+    assert res["status"] == "creds_missing"
+    assert "BERTUAL" in res["error"]
+
+
+def test_process_tenant_ok_end_to_end(tmp_path, monkeypatch):
+    """Mock supplier que devuelve 150 items, process_tenant escribe gz + accum."""
+    monkeypatch.setattr(update_products, "TENANTS_DIR", str(tmp_path / "tenants"))
+    monkeypatch.setattr(update_products, "PRIMARY_TENANT_SLUG", None)  # no compat mirror
+
+    tenant_root = tmp_path / "tenants" / "alpha"
+    (tenant_root / "config").mkdir(parents=True)
+    (tenant_root / "config" / "config.json").write_text(
+        json.dumps({"markup": 0.0, "iva": 0.0})
+    )
+
+    fake_supplier = MagicMock()
+    fake_supplier.name = "Bertual"
+    fake_supplier.required_creds = ()  # bypass creds check
+    fake_supplier.fetch_products.return_value = [
+        {"Precio": 10, "Articulo": f"P{i}", "Descripcion": "x", "Moneda": "PES"}
+        for i in range(150)
+    ]
+    fake_supplier.transform_item.side_effect = lambda raw, cfg: {
+        "producto": raw["Articulo"],
+        "detalle": "x",
+        "marca": "",
+        "moneda": "$",
+        "precio": "10.00",
+    }
+    monkeypatch.setattr(update_products.suppliers, "get", lambda _: fake_supplier)
+
+    res = update_products.process_tenant({
+        "slug": "alpha", "supplier": "Bertual", "state": "active",
+    }, silent=False)
+    assert res["status"] == "ok", res
+    assert res["new"] == 150  # primera corrida, todos son nuevos
+    # Verificar archivos en disco
+    data_dir = tenant_root / "data"
+    assert any(f.endswith(".gz") for f in os.listdir(data_dir))
+    assert (tenant_root / "latest-json-filename.txt").exists()
+    assert (tenant_root / "status" / "daily_accum.json").exists()
+
+
+def test_main_no_registry(monkeypatch, tmp_path, capsys):
+    monkeypatch.setattr(update_products, "REGISTRY", str(tmp_path / "no.yml"))
+    monkeypatch.setattr(update_products, "STATUS_DIR", str(tmp_path / "status"))
+    rc = update_products.main([])
+    assert rc == 1
+
+
+def test_load_tenant_creds_overrides_root(tmp_path, monkeypatch):
+    monkeypatch.setattr(update_products, "TENANTS_DIR", str(tmp_path / "tenants"))
+    monkeypatch.setenv("BERTUAL_CUIT", "ROOT_CUIT")
+    tenant_dir = tmp_path / "tenants" / "alpha"
+    tenant_dir.mkdir(parents=True)
+    (tenant_dir / ".env").write_text("BERTUAL_CUIT=TENANT_CUIT\nBERTUAL_PASSWORD=secret\n")
+    creds = update_products.load_tenant_creds("alpha")
+    assert creds["BERTUAL_CUIT"] == "TENANT_CUIT"
+    assert creds["BERTUAL_PASSWORD"] == "secret"
+
+
+def test_load_tenant_creds_falls_back_to_root_env(tmp_path, monkeypatch):
+    monkeypatch.setattr(update_products, "TENANTS_DIR", str(tmp_path / "tenants"))
+    monkeypatch.setenv("BERTUAL_CUIT", "ROOT_CUIT")
+    creds = update_products.load_tenant_creds("alpha")  # sin tenants/alpha/.env
+    assert creds["BERTUAL_CUIT"] == "ROOT_CUIT"

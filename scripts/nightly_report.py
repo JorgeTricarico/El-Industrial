@@ -12,6 +12,11 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 BASE_DIR = os.path.dirname(SCRIPT_DIR)
 STATUS_DIR = os.path.join(BASE_DIR, "status")
 ENV_FILE = os.path.join(BASE_DIR, ".env")
+TENANTS_DIR = os.path.join(BASE_DIR, "tenants")
+REGISTRY = os.path.join(TENANTS_DIR, "_registry.yml")
+
+# Tenant primario que tambien lee accum del root (compat con update_products).
+PRIMARY_TENANT_SLUG = "el-industrial"
 
 load_dotenv(ENV_FILE)
 
@@ -161,9 +166,12 @@ def _send_to_chat(chat_id, message, name=""):
     return False
 
 
-def send_telegram(message):
-    """Broadcast a todos los destinatarios habilitados como report (admin + client)
-    en config/clients.yml. Si no hay archivo, usa TELEGRAM_CHAT_ID del .env (legacy).
+def send_telegram(message, clients_path=None):
+    """Broadcast a destinatarios habilitados como report (admin + client).
+
+    clients_path: ruta al clients.yml del tenant. Si None, usa el legacy del
+                  repo raiz (config/clients.yml). Pasar
+                  tenants/<slug>/config/clients.yml para multi-tenant.
     Retorna True si llego al menos a un destinatario.
     """
     if not TELEGRAM_TOKEN:
@@ -184,7 +192,9 @@ def send_telegram(message):
             if SCRIPT_DIR in sys.path:
                 sys.path.remove(SCRIPT_DIR)
 
-    recipients = _clients_mod.recipients_for("report", legacy_chat_id=TELEGRAM_CHAT_ID)
+    recipients = _clients_mod.recipients_for(
+        "report", legacy_chat_id=TELEGRAM_CHAT_ID, path=clients_path,
+    )
     if not recipients:
         log_metric("telegram_skip", "sin destinatarios configurados")
         return False
@@ -220,17 +230,22 @@ Formato: HTML simple solo con <b>negrita</b> y bullets con "• ". Maximo 1200 c
 Sin introducciones tipo "Hola" ni cierres tipo "Saludos"."""
 
 
-def main():
-    accum_path = os.path.join(STATUS_DIR, "daily_accum.json")
-    if not os.path.exists(accum_path):
-        log_metric("nightly_skip", "sin daily_accum.json")
-        return
+def load_registry():
+    if not os.path.exists(REGISTRY):
+        return []
+    try:
+        import yaml
+    except ImportError:
+        return []
+    try:
+        with open(REGISTRY, "r", encoding="utf-8") as f:
+            return (yaml.safe_load(f) or {}).get("tenants", [])
+    except (OSError, Exception):
+        return []
 
-    with open(accum_path, "r", encoding="utf-8") as f:
-        accum_data = json.load(f)
 
-    updated_items = list(accum_data.get("updated", {}).values())
-
+def _compute_stats(updated_items):
+    """Calcula top_brands + top_hikes a partir del set updated."""
     stats_marcas = {}
     aumentos = []
     for item in updated_items:
@@ -244,10 +259,77 @@ def main():
                 aumentos.append({"n": item.get("name", brand), "p": diff, "m": brand})
         except (TypeError, ValueError) as e:
             log_metric("price_parse_fail", f"{item.get('code', '?')}: {e}")
-
     top_brands = sorted(stats_marcas.items(), key=lambda x: x[1], reverse=True)[:5]
     top_hikes = sorted(aumentos, key=lambda x: x["p"], reverse=True)[:15]
+    return top_brands, top_hikes
 
+
+def _update_telegram_heartbeat(provider, status_dir):
+    """Dead-man-switch: registra que el mensaje se envio."""
+    try:
+        hb_path = os.path.join(status_dir, "heartbeat.json")
+        hb = {}
+        if os.path.exists(hb_path):
+            with open(hb_path, "r", encoding="utf-8") as f:
+                hb = json.load(f)
+        hb["last_telegram_iso"] = datetime.now().isoformat()
+        hb["last_telegram_provider"] = provider
+        os.makedirs(status_dir, exist_ok=True)
+        with open(hb_path, "w", encoding="utf-8") as f:
+            json.dump(hb, f, indent=2)
+    except (OSError, json.JSONDecodeError) as e:
+        log_metric("heartbeat_update_fail", f"{type(e).__name__}: {e}")
+
+
+def _archive_accum(accum_path, status_dir):
+    """Mueve accum a status_dir/archive/ con timestamp."""
+    archive_dir = os.path.join(status_dir, "archive")
+    os.makedirs(archive_dir, exist_ok=True)
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    try:
+        os.rename(accum_path, os.path.join(archive_dir, f"accum_{ts}.json"))
+    except OSError as e:
+        log_metric("archive_fail", f"{type(e).__name__}: {e}")
+    prune_old_archives(archive_dir, days=90)
+
+
+def process_tenant_report(tenant):
+    """Genera y envia el reporte nocturno de UN tenant.
+
+    Lee tenants/<slug>/status/daily_accum.json. Manda a destinatarios
+    role=admin+client del tenants/<slug>/config/clients.yml. Si el tenant
+    no tiene accum, retorna early sin error (es valido: dia sin cambios).
+
+    Retorna dict con info: {slug, status, items, provider, sent}.
+    """
+    slug = tenant.get("slug")
+    result = {"slug": slug, "status": "skip", "items": 0, "provider": None, "sent": False}
+
+    if tenant.get("state") not in ("active",):
+        result["status"] = f"skip_state_{tenant.get('state')}"
+        return result
+
+    tenant_status_dir = os.path.join(TENANTS_DIR, slug, "status")
+    accum_path = os.path.join(tenant_status_dir, "daily_accum.json")
+    # Compat transicional: el tenant primario puede no tener su accum aun
+    # si update_products no corrio con el codigo nuevo todavia. Caer al
+    # root accum en ese caso para no perder dia 1 de la migracion.
+    if not os.path.exists(accum_path) and slug == PRIMARY_TENANT_SLUG:
+        root_accum = os.path.join(STATUS_DIR, "daily_accum.json")
+        if os.path.exists(root_accum):
+            os.makedirs(tenant_status_dir, exist_ok=True)
+            accum_path = root_accum
+            log_metric("nightly_compat", f"{slug}: usando root accum por fallback")
+    if not os.path.exists(accum_path):
+        log_metric("nightly_skip", f"{slug}: sin daily_accum.json")
+        result["status"] = "no_accum"
+        return result
+
+    with open(accum_path, "r", encoding="utf-8") as f:
+        accum_data = json.load(f)
+    updated_items = list(accum_data.get("updated", {}).values())
+
+    top_brands, top_hikes = _compute_stats(updated_items)
     now = datetime.now()
     fecha = now.strftime("%d/%m/%Y")
     hora = now.strftime("%H:%M")
@@ -263,40 +345,56 @@ def main():
         else:
             body = sanitize_html(body)
 
-    full_report = f"📌 <b>Lista del dia — {fecha} {hora}</b>\n\n{body}"
-    # Telegram limita a 4096; recortamos con margen.
+    # Branding del tenant (siteName) para personalizar el header
+    site_name = ""
+    try:
+        bp = os.path.join(TENANTS_DIR, slug, "config", "branding.json")
+        if os.path.exists(bp):
+            with open(bp, "r", encoding="utf-8") as f:
+                site_name = (json.load(f) or {}).get("siteName", "")
+    except (OSError, json.JSONDecodeError):
+        pass
+    header = f"📌 <b>Lista del dia — {site_name}</b>" if site_name else "📌 <b>Lista del dia</b>"
+    full_report = f"{header} — {fecha} {hora}\n\n{body}"
     if len(full_report) > 3900:
         full_report = full_report[:3870] + "\n\n<i>(mensaje recortado)</i>"
 
-    sent = send_telegram(full_report)
-    log_metric("nightly_done", f"provider={provider} sent={sent} items={len(updated_items)}")
+    clients_yml = os.path.join(TENANTS_DIR, slug, "config", "clients.yml")
+    sent = send_telegram(full_report, clients_path=clients_yml)
+    log_metric("nightly_done", f"{slug} provider={provider} sent={sent} items={len(updated_items)}")
 
-    # Dead-man-switch: registrar que el mensaje efectivamente se envio.
-    # El healthcheck consulta este timestamp para detectar fallos de entrega.
     if sent:
-        try:
-            hb_path = os.path.join(STATUS_DIR, "heartbeat.json")
-            hb = {}
-            if os.path.exists(hb_path):
-                with open(hb_path, "r", encoding="utf-8") as f:
-                    hb = json.load(f)
-            hb["last_telegram_iso"] = datetime.now().isoformat()
-            hb["last_telegram_provider"] = provider
-            with open(hb_path, "w", encoding="utf-8") as f:
-                json.dump(hb, f, indent=2)
-        except (OSError, json.JSONDecodeError) as e:
-            log_metric("heartbeat_update_fail", f"{type(e).__name__}: {e}")
+        _update_telegram_heartbeat(provider, STATUS_DIR)  # heartbeat es global
+    _archive_accum(accum_path, tenant_status_dir)
 
-    # Archivar accum independientemente del envio
-    archive_dir = os.path.join(STATUS_DIR, "archive")
-    os.makedirs(archive_dir, exist_ok=True)
-    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-    try:
-        os.rename(accum_path, os.path.join(archive_dir, f"accum_{ts}.json"))
-    except OSError as e:
-        log_metric("archive_fail", f"{type(e).__name__}: {e}")
+    result.update(status="ok", items=len(updated_items), provider=provider, sent=sent)
+    return result
 
-    prune_old_archives(archive_dir, days=90)
+
+def main():
+    tenants = load_registry()
+    if not tenants:
+        log_metric("nightly_skip", "sin tenants en _registry.yml")
+        return
+
+    any_processed = False
+    for t in tenants:
+        if t.get("state") != "active":
+            continue
+        res = process_tenant_report(t)
+        log_metric("nightly_tenant_done",
+                   f"{res['slug']} status={res['status']} items={res['items']} sent={res['sent']}")
+        any_processed = True
+
+    # Compat: si el tenant primario aun deja accum en root status/, lo archivamos
+    # para que no quede acumulando dia a dia. (update_products escribe a ambos
+    # lugares durante Fase 2B transitoria.)
+    root_accum = os.path.join(STATUS_DIR, "daily_accum.json")
+    if os.path.exists(root_accum):
+        _archive_accum(root_accum, STATUS_DIR)
+
+    if not any_processed:
+        log_metric("nightly_skip", "ningun tenant active en _registry.yml")
 
 
 def prune_old_archives(archive_dir, days=90):
