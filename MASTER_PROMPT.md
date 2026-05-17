@@ -25,7 +25,7 @@
 
 - **status**: completed
 - **done**: 2026-05-17
-- **commit**: (ver siguiente commit)
+- **commit**: 73cec3f
 - **prioridad**: ALTA (cierra deuda transitoria de Fase 2B)
 - **estimado**: 1-2h
 - **bloquea**: M2
