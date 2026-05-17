@@ -223,10 +223,21 @@ def send_alert(problems):
         print("[telegram] sin destinatarios admin configurados.", file=sys.stderr)
         return False
 
+    # Diagnostico AI con contexto. Solo admin/dev, nunca cliente.
+    ai_text, ai_provider = "", "skip"
+    try:
+        sys.path.insert(0, SCRIPT_DIR)
+        import ai_diagnose
+        ai_text, ai_provider = ai_diagnose.diagnose(problems)
+    except Exception as e:
+        ai_text = f"<i>(diagnostico AI no disponible: {type(e).__name__})</i>"
+
     now = datetime.now().strftime("%d/%m/%Y %H:%M")
-    body = f"🔧 <b>El Industrial — chequeo {now}</b>\nNodo: {HOST}\n\n"
-    body += "\n".join(f"• {p}" for p in problems)
-    body += "\n\nRevisar logs en <code>reports/cron_log.txt</code> y <code>status/metrics.jsonl</code>."
+    body = f"🔧 <b>Healthcheck — {now} AR</b> <i>(solo dev)</i>\nNodo: {HOST}\n\n"
+    body += "<b>Problemas:</b>\n" + "\n".join(f"• {p}" for p in problems)
+    if ai_text:
+        body += f"\n\n<b>Analisis AI ({ai_provider}):</b>\n{ai_text}"
+    body += "\n\nLogs: <code>reports/cron_log.txt</code> y <code>status/metrics.jsonl</code>."
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
 
     sent_count = 0

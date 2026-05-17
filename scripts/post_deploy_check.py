@@ -373,10 +373,23 @@ def send_alert(all_problems):
     if not recipients:
         _log_alert(all_problems, [], 0, "(sin destinatarios configurados)")
         return False
-    body = "🔴 <b>Post-deploy check FALLO</b>\n"
-    body += f"Hora: {datetime.now().strftime('%d/%m %H:%M')}\n\n"
+
+    # Diagnostico AI con contexto del sistema. Solo va al admin/dev, NUNCA a clients.
+    ai_text, ai_provider = "", "skip"
+    try:
+        import ai_diagnose
+        ai_text, ai_provider = ai_diagnose.diagnose(all_problems)
+    except Exception as e:
+        ai_text = f"<i>(diagnostico AI no disponible: {type(e).__name__})</i>"
+        ai_provider = "error"
+
+    body = "🔴 <b>Post-deploy check FALLO</b> <i>(solo dev)</i>\n"
+    body += f"Hora: {datetime.now().strftime('%d/%m %H:%M')} AR\n\n"
+    body += "<b>Problemas detectados:</b>\n"
     body += "\n".join(f"• {p}" for p in all_problems)
-    body += "\n\n<i>Los compradores podrian estar viendo precios desactualizados. Revisar deploys de Netlify YA.</i>"
+    if ai_text:
+        body += f"\n\n<b>Analisis AI ({ai_provider}):</b>\n{ai_text}"
+    body += "\n\n<i>Los compradores NO reciben este mensaje. Solo admins.</i>"
     url = f"https://api.telegram.org/bot{token}/sendMessage"
     sent = 0
     for chat_id, _name in recipients:
