@@ -5,6 +5,9 @@ on:
     - cron: '30 23 * * *' 
   workflow_dispatch: 
 
+env:
+  TZ: America/Argentina/Buenos_Aires
+
 jobs:
   check-and-sync:
     runs-on: ubuntu-latest

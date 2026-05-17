@@ -1,5 +1,12 @@
 #!/bin/bash
 
+# --- Zona horaria del usuario ---
+# La Pi y los runners de GH Actions corren en UTC. Forzamos AR para que TODOS
+# los timestamps que se loguean o se muestran al cliente (cron_log, Telegram,
+# heartbeat, metrics) salgan en hora de Buenos Aires. Tanto `date` como
+# Python heredan esta variable y la usan al llamar datetime.now().
+export TZ='America/Argentina/Buenos_Aires'
+
 # --- Configuración y Rutas ---
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 PROJECT_ROOT="$( dirname "$SCRIPT_DIR" )"

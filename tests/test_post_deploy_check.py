@@ -47,12 +47,24 @@ def _mock_response(ok=True, status=200, content=b"", text=""):
 @patch.object(pdc.requests, "get")
 def test_todo_ok_no_problems(mock_get, fake_tenant):
     """Web publica devuelve el mismo pointer y bytes que el local -> sin alerta."""
+    full_html = '''<html><head><title>X</title></head><body>
+    <span id="brandName">X</span>
+    <table id="productTable"></table>
+    <input id="searchInput">
+    <script src="js/main.js"></script>
+    </body></html>'''
     def by_url(url, **kw):
         if url.endswith("latest-json-filename.txt"):
             return _mock_response(content=("data/" + fake_tenant["filename"]).encode())
         if url.endswith(".gz"):
             return _mock_response(content=fake_tenant["raw_bytes"])
-        return _mock_response(ok=False, status=404)
+        if url.endswith("js/main.js"):
+            return _mock_response(content=b"// ok")
+        if url.endswith("config/branding.json"):
+            r = MagicMock(ok=True, status_code=200)
+            r.json = lambda: {"siteName": "X"}
+            return r
+        return _mock_response(text=full_html)
     mock_get.side_effect = by_url
     code = pdc.main()
     assert code == 0
@@ -103,6 +115,56 @@ def test_precios_difieren_alerta(mock_get, fake_tenant):
         if url.endswith(".gz"):
             return _mock_response(content=bad_raw)
         return _mock_response(ok=False)
+    mock_get.side_effect = by_url
+    code = pdc.main()
+    assert code != 0
+
+
+@patch.object(pdc.requests, "get")
+def test_html_smoke_detecta_falta_main_js(mock_get, fake_tenant):
+    """Si el HTML publico no linkea js/main.js, debe alertar."""
+    today = fake_tenant["filename"]
+    def by_url(url, **kw):
+        if url.endswith("latest-json-filename.txt"):
+            return _mock_response(content=("data/" + today).encode())
+        if url.endswith(".gz"):
+            return _mock_response(content=fake_tenant["raw_bytes"])
+        if url.endswith("/") or url.rstrip("/").split("/")[-1] == "fake-cliente-x.netlify.app":
+            return _mock_response(text='<html><head><title>x</title></head><body><div id="brandName"></div></body></html>')
+        if url.endswith("js/main.js"):
+            return _mock_response(ok=False, status=404)
+        if url.endswith("config/branding.json"):
+            r = MagicMock(ok=True, status_code=200)
+            r.json = lambda: {"siteName": "X"}
+            return r
+        return _mock_response(ok=False, status=404)
+    mock_get.side_effect = by_url
+    code = pdc.main()
+    assert code != 0, "Debe alertar si main.js da 404"
+
+
+@patch.object(pdc.requests, "get")
+def test_html_smoke_detecta_branding_sin_sitename(mock_get, fake_tenant):
+    """Si branding.json no tiene siteName, la web se ve como 'Cargando…'."""
+    today = fake_tenant["filename"]
+    full_html = '''<html><head><title>x</title></head><body>
+    <span id="brandName">x</span>
+    <table id="productTable"></table>
+    <input id="searchInput">
+    <script src="js/main.js"></script>
+    </body></html>'''
+    def by_url(url, **kw):
+        if url.endswith("latest-json-filename.txt"):
+            return _mock_response(content=("data/" + today).encode())
+        if url.endswith(".gz"):
+            return _mock_response(content=fake_tenant["raw_bytes"])
+        if url.endswith("js/main.js"):
+            return _mock_response(content=b"// ok")
+        if url.endswith("config/branding.json"):
+            r = MagicMock(ok=True, status_code=200)
+            r.json = lambda: {"siteName": ""}
+            return r
+        return _mock_response(text=full_html)
     mock_get.side_effect = by_url
     code = pdc.main()
     assert code != 0

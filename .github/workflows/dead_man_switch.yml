@@ -9,6 +9,9 @@ on:
     - cron: '0 12 * * *'
   workflow_dispatch:
 
+env:
+  TZ: America/Argentina/Buenos_Aires
+
 jobs:
   check:
     runs-on: ubuntu-latest

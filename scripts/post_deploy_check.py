@@ -97,6 +97,92 @@ def normalize(items):
     return out
 
 
+def check_against_supplier(tenant, public_parsed):
+    """Llama a la API del proveedor (Bertual u otra), aplica el config del tenant
+    y compara un sample contra lo que la web publica sirve. Solo se ejecuta si
+    estamos en un host con acceso al proveedor (la Pi, no GH Actions).
+
+    Retorna lista de problemas (vacia si todo OK o si el proveedor no es accesible).
+    """
+    problems = []
+    supplier = (tenant.get("supplier") or "").strip().lower()
+    if supplier != "bertual":
+        return []  # otros proveedores aun no implementados (Haedo, etc.)
+    try:
+        from bertual_api import BertualAPIClient
+        import update_products as up
+    except ImportError as e:
+        return [f"{tenant.get('slug')}: no se pudo importar bertual_api: {e}"]
+    try:
+        client = BertualAPIClient()
+        raw_products = client.fetch_products()
+    except Exception as e:
+        # API no accesible desde este host (timeout desde GH Actions es esperado).
+        # Silencioso: no es un fallo del sistema, solo "no podemos verificar desde aca".
+        print(f"[supplier] {tenant.get('slug')}: API del proveedor no accesible desde este host ({type(e).__name__}). Skip.")
+        return []
+
+    if not isinstance(raw_products, list) or not raw_products:
+        return [f"{tenant.get('slug')}: API del proveedor devolvio respuesta inesperada o vacia."]
+
+    # Aplicar transform_item del tenant. ATENCION: transform_item lee el config
+    # GLOBAL (up.config), que apunta al config.json del raiz. Para multi-tenant
+    # estricto deberiamos parsear el config del tenant. Por ahora, si el tenant
+    # tiene un config propio, lo cargamos.
+    tenant_dir = os.path.join(TENANTS_DIR, tenant.get("slug", ""))
+    tenant_config_path = os.path.join(tenant_dir, "config", "config.json")
+    if os.path.exists(tenant_config_path):
+        try:
+            with open(tenant_config_path, "r", encoding="utf-8") as f:
+                up.config.update(json.load(f))
+        except (OSError, json.JSONDecodeError):
+            pass
+
+    # Aplicar transform a TODOS los items del proveedor para tener el catalogo final
+    supplier_normalized = {}
+    for raw in raw_products:
+        try:
+            t = up.transform_item(raw)
+            if t.get("producto"):
+                supplier_normalized[str(t["producto"])] = str(t["precio"])
+        except (TypeError, ValueError, KeyError):
+            continue
+
+    public_normalized = normalize(public_parsed)
+    if not public_normalized:
+        return [f"{tenant.get('slug')}: public_parsed vacio para comparar contra proveedor."]
+
+    # Sample 10 productos del catalogo del proveedor y verifica que esten en la web
+    # con el mismo precio. Si difieren mas de 1% (timing entre fetch y deploy), alerta.
+    common_keys = list(set(supplier_normalized.keys()) & set(public_normalized.keys()))
+    if not common_keys:
+        return [f"{tenant.get('slug')}: el catalogo publico NO comparte productos con la API del proveedor. Posible corrupcion."]
+
+    sample_size = min(10, len(common_keys))
+    sample = random.sample(common_keys, sample_size)
+    diffs = []
+    for k in sample:
+        try:
+            p_sup = float(supplier_normalized[k])
+            p_web = float(public_normalized[k])
+        except ValueError:
+            continue
+        # Tolerancia: 1% de diferencia es OK (puede haber 1 peso por redondeo entre runs)
+        if p_sup == 0:
+            continue
+        rel_diff = abs(p_sup - p_web) / p_sup
+        if rel_diff > 0.01:
+            diffs.append(f"{k}: proveedor={p_sup:.2f} web={p_web:.2f} ({rel_diff*100:.1f}% diff)")
+    if diffs:
+        problems.append(
+            f"{tenant.get('slug')}: precios divergen del proveedor en {len(diffs)}/{sample_size} muestreos. "
+            + " | ".join(diffs[:3])
+        )
+    else:
+        print(f"[supplier] {tenant.get('slug')}: {sample_size} precios random matchean al proveedor (tolerancia 1%).")
+    return problems
+
+
 def check_tenant(tenant):
     """Retorna (slug, problems_list). Lista vacia si todo OK."""
     slug = tenant.get("slug")
@@ -143,50 +229,102 @@ def check_tenant(tenant):
         except ValueError:
             pass
 
-    # 3) Bytes del .gz publico == bytes locales?
+    # 3) Bytes del .gz publico == bytes locales? Parseamos siempre para tener
+    # public_parsed disponible para el check de proveedor abajo.
     ok, status, public_bytes = fetch_public(url, expected_pointer)
     if not ok:
         problems.append(f"{slug}: .gz publico no responde (HTTP {status}).")
         return (slug, problems)
-    if public_bytes != local_raw:
-        # Netlify a veces sirve el .gz ya descomprimido (Content-Encoding: gzip lo
-        # transparenta para clientes que lo soportan). Probamos las dos formas.
-        public_parsed = None
+    public_parsed = None
+    try:
+        public_parsed = json.loads(gzip.decompress(public_bytes).decode("utf-8"))
+    except (OSError, json.JSONDecodeError):
+        pass
+    if public_parsed is None:
         try:
-            public_parsed = json.loads(gzip.decompress(public_bytes).decode("utf-8"))
-        except (OSError, json.JSONDecodeError):
-            pass
-        if public_parsed is None:
-            try:
-                public_parsed = json.loads(public_bytes.decode("utf-8"))
-            except (UnicodeDecodeError, json.JSONDecodeError) as e:
-                problems.append(f"{slug}: contenido publico no parsea (ni gzip ni json plano): {e}")
-                return (slug, problems)
-        local_norm = normalize(local_data) if isinstance(local_data, (list, dict)) else {}
-        public_norm = normalize(public_parsed)
-        if not local_norm:
-            problems.append(f"{slug}: no se pudo normalizar la data local (formato inesperado).")
+            public_parsed = json.loads(public_bytes.decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError) as e:
+            problems.append(f"{slug}: contenido publico no parsea (ni gzip ni json plano): {e}")
             return (slug, problems)
-        if set(local_norm.keys()) != set(public_norm.keys()):
-            missing = set(local_norm.keys()) - set(public_norm.keys())
-            extra = set(public_norm.keys()) - set(local_norm.keys())
-            problems.append(
-                f"{slug}: catalogos no coinciden. Faltan en publico: {len(missing)} | Extra en publico: {len(extra)}. "
-                f"Sample faltante: {list(missing)[:3]}"
-            )
-            return (slug, problems)
-        # 4) Sample de precios coinciden
-        keys = list(local_norm.keys())
-        if keys:
-            sample = random.sample(keys, min(SAMPLE_SIZE, len(keys)))
-            diffs = []
-            for k in sample:
-                if local_norm[k] != public_norm.get(k):
-                    diffs.append(f"{k}: local={local_norm[k]} publico={public_norm.get(k)}")
-            if diffs:
-                problems.append(f"{slug}: precios difieren en sample. " + " | ".join(diffs))
+
+    local_norm = normalize(local_data) if isinstance(local_data, (list, dict)) else {}
+    public_norm = normalize(public_parsed)
+    if not local_norm:
+        problems.append(f"{slug}: no se pudo normalizar la data local (formato inesperado).")
+        return (slug, problems)
+    if set(local_norm.keys()) != set(public_norm.keys()):
+        missing = set(local_norm.keys()) - set(public_norm.keys())
+        extra = set(public_norm.keys()) - set(local_norm.keys())
+        problems.append(
+            f"{slug}: catalogos no coinciden. Faltan en publico: {len(missing)} | Extra en publico: {len(extra)}. "
+            f"Sample faltante: {list(missing)[:3]}"
+        )
+        return (slug, problems)
+    # 4) Sample de precios entre local y publico
+    keys = list(local_norm.keys())
+    if keys:
+        sample = random.sample(keys, min(SAMPLE_SIZE, len(keys)))
+        diffs = []
+        for k in sample:
+            if local_norm[k] != public_norm.get(k):
+                diffs.append(f"{k}: local={local_norm[k]} publico={public_norm.get(k)}")
+        if diffs:
+            problems.append(f"{slug}: precios difieren en sample. " + " | ".join(diffs))
+
+    # 5) Verificacion contra el proveedor real (Bertual, Haedo, etc.)
+    # Solo se ejecuta si el host tiene acceso al proveedor (la Pi). Silencioso si no.
+    problems.extend(check_against_supplier(tenant, public_parsed))
+
+    # 6) Smoke check del HTML publico
+    problems.extend(check_html_smoke(tenant, url))
 
     return (slug, problems)
+
+
+def check_html_smoke(tenant, url):
+    """Fetch del index.html publico y verifica estructura minima.
+    Atrapa: HTML corrupto, build incompleto, archivos JS faltantes.
+    """
+    problems = []
+    slug = tenant.get("slug")
+    try:
+        res = requests.get(url, timeout=10)
+    except Exception as e:
+        return [f"{slug}: index.html no responde ({type(e).__name__})."]
+    if not res.ok:
+        return [f"{slug}: index.html HTTP {res.status_code}."]
+    html = res.text
+    required_markers = [
+        ("<title>", "title tag"),
+        ('id="brandName"', "brandName placeholder"),
+        ('id="productTable"', "tabla de productos"),
+        ('id="searchInput"', "search input"),
+        ('src="js/main.js', "main.js linkeado"),
+    ]
+    for marker, desc in required_markers:
+        if marker not in html:
+            problems.append(f"{slug}: HTML publico le falta {desc} ({marker!r}). Build/deploy incompleto?")
+
+    # Verifica que js/main.js carga sin 404
+    try:
+        res = requests.get(url.rstrip("/") + "/js/main.js", timeout=10)
+        if not res.ok:
+            problems.append(f"{slug}: js/main.js HTTP {res.status_code}. Front no funciona.")
+    except Exception as e:
+        problems.append(f"{slug}: js/main.js no fetcheable: {type(e).__name__}.")
+
+    # Verifica branding.json sirve JSON valido
+    try:
+        res = requests.get(url.rstrip("/") + "/config/branding.json", timeout=10)
+        if not res.ok:
+            problems.append(f"{slug}: config/branding.json HTTP {res.status_code}.")
+        else:
+            j = res.json()
+            if not j.get("siteName"):
+                problems.append(f"{slug}: branding.json sin siteName. Web mostraria 'Cargando…'.")
+    except Exception as e:
+        problems.append(f"{slug}: branding.json no parsea como JSON: {type(e).__name__}.")
+    return problems
 
 
 def send_alert(all_problems):

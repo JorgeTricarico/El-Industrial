@@ -8,3 +8,7 @@ status/
 !data/
 !latest-json-filename.json
 !latest-json-filename.txt
+node_modules/
+test-results/
+tests/e2e/report/
+playwright-report/

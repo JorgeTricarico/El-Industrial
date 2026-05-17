@@ -1,5 +1,8 @@
 #!/bin/bash
 
+# Zona horaria del usuario (ver explicacion en run_daily.sh).
+export TZ='America/Argentina/Buenos_Aires'
+
 # --- Configuración y Rutas ---
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 PROJECT_ROOT="$( dirname "$SCRIPT_DIR" )"

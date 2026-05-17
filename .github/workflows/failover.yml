@@ -5,6 +5,9 @@ on:
     - cron: '0 10,22 * * *' # Corre a las 10:00 AM y 10:00 PM UTC
   workflow_dispatch: # Permite correrlo manualmente para pruebas
 
+env:
+  TZ: America/Argentina/Buenos_Aires
+
 jobs:
   check-and-failover:
     runs-on: ubuntu-latest
