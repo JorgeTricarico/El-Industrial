@@ -1,0 +1,11 @@
+{
+  "slug": "demo-electricidad",
+  "siteName": "Tu Empresa Aquí",
+  "tagline": "Demo del servicio · rubro: electricidad · proveedor: Electrónica Haedo",
+  "logoUrl": "rayo.svg",
+  "faviconUrl": "rayo.svg",
+  "primaryColor": "#0f172a",
+  "accentColor": "#0ea5e9",
+  "contactWpp": "",
+  "socialLinks": {}
+}

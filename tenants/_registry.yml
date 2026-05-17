@@ -24,10 +24,17 @@ tenants:
     bertual_account: "default"
     notes: "Tenant original. Migracion a tenants/el-industrial/ pendiente (Fase 2)."
 
-  - slug: ferreteria-prueba
-    name: "Ferreteria Prueba"
+  - slug: demo-electricidad
+    name: "Demo Electricidad (placeholder: 'Tu Empresa Aquí')"
     state: testing
-    netlify_url: "https://ferreteria-prueba.netlify.app"
-    netlify_site_id: "6d19580e-4b8b-4973-9ddd-ff306eff46db"
-    bertual_account: "(no aplica - usa data espejo de el-industrial)"
-    notes: "Tenant de validacion. Auto-deploy a Netlify desde sync_tenants si hay NETLIFY_AUTH_TOKEN en .env."
+    netlify_url: "https://demo-electricidad.netlify.app"
+    netlify_site_id: "0d1ebe3c-6d84-49ba-a62d-64bc0c4e38a4"
+    supplier: "Electronica Haedo"
+    supplier_account: "(no aplica aun - sin API del proveedor en este demo)"
+    notes: |
+      Cliente DEMO para mostrar el branding del servicio a prospects del rubro
+      electrico. El proveedor mayorista de referencia es Electronica Haedo (asi
+      como Bertual lo es para el-industrial). siteName='Tu Empresa Aquí' es
+      placeholder; en una venta real, el cliente nos da su nombre y logo.
+      Auto-deploy a Netlify activo en sync_tenants si NETLIFY_AUTH_TOKEN esta
+      en el .env.

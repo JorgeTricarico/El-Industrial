@@ -47,6 +47,10 @@ const init = async () => {
             state.usDollarPrice = dollarData.venta;
             ui.updateDollarUI(dollarData);
         } else {
+            // API del dolar fallo: ocultamos la caja vacia "Dolar Hoy ---" para que
+            // el header no quede con un hueco visual feo. El boton de toggle queda.
+            const di = document.getElementById('dollarInfo');
+            if (di) di.hidden = true;
             ui.elements.currencyToggle.style.display = "flex";
         }
 

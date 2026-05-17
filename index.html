@@ -12,7 +12,8 @@
   
   <!-- Styles -->
   <link rel="stylesheet" href="style.css?v=1.2">
-  <link rel="shortcut icon" href="tornillo.png" type="image/png">
+  <!-- Favicon real lo setea js/main.js desde config/branding.json (faviconUrl o logoUrl). -->
+  <link rel="shortcut icon" href="data:,">
   
   <!-- Icons (Lucide) -->
   <script src="https://unpkg.com/lucide@latest"></script>
@@ -26,12 +27,12 @@
     <div class="nav-container">
       <div class="header-top">
         <div class="logo">
-          <img src="tornillo.png" alt="Logo">
+          <img src="data:image/gif;base64,R0lGODlhAQABAIAAAP///wAAACH5BAEAAAAALAAAAAABAAEAAAICRAEAOw==" alt="Logo">
           <span id="brandName">Cargando…</span>
         </div>
 
         <div class="controls">
-          <div id="dollarInfo" class="dollar-tag">
+          <div id="dollarInfo" class="dollar-tag" hidden>
             <span class="dollar-label">Dolar Hoy</span>
             <div class="dollar-data">
               <span id="dollarPrice">---</span>
