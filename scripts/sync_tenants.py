@@ -21,8 +21,9 @@ BASE_DIR = os.path.dirname(SCRIPT_DIR)
 TENANTS_DIR = os.path.join(BASE_DIR, "tenants")
 REGISTRY = os.path.join(TENANTS_DIR, "_registry.yml")
 
-# Archivos del front que se replican a cada tenant
-FRONT_FILES = ["index.html", "style.css", "tornillo.png"]
+# Archivos del front compartidos que se replican a cada tenant.
+# El logo NO va aca: cada tenant aporta el suyo (apuntado por branding.logoUrl).
+FRONT_FILES = ["index.html", "style.css"]
 FRONT_DIRS = ["js"]
 
 
