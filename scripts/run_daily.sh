@@ -47,6 +47,10 @@ log_message "Auto-pull: git pull --rebase --autostash origin main..."
 if git pull --rebase --autostash origin main --quiet 2>>"$LOG_FILE"; then
     NEW_HEAD=$(git rev-parse --short HEAD 2>/dev/null)
     log_message "Pull OK. HEAD=$NEW_HEAD"
+    # Refrescar heartbeat.version YA (sin esperar al update_products del final).
+    # Sin esto, entre el pull y el proximo cron (~9h despues) el healthcheck
+    # alertaba por "drift de version" como falso positivo.
+    python3 "$SCRIPT_DIR/refresh_heartbeat.py" >>"$LOG_FILE" 2>&1 || true
 else
     log_message "ADVERTENCIA: git pull fallo, continuando con codigo local."
 fi
