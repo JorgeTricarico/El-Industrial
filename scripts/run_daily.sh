@@ -55,6 +55,17 @@ else
     log_message "ADVERTENCIA: git pull fallo, continuando con codigo local."
 fi
 
+# --- Pulso del nodo: arrancamos. Siempre pulsea aunque la corrida no haga trabajo util.
+# Trazabilidad total: cada device en cada cron deja huella en heartbeat.json.
+PULSE_PY="$SCRIPT_DIR/node_pulse.py"
+pulse() {
+    # uso: pulse <outcome> [nota]
+    if [ -f "$PULSE_PY" ]; then
+        "${VENV_PATH}/bin/python" "$PULSE_PY" --outcome "$1" --note "${2:-}" >>"$LOG_FILE" 2>&1 || true
+    fi
+}
+pulse "started" "cron run inicio"
+
 # --- Auto-install deps si requirements.txt cambio ---
 # Cada nodo guarda el hash del requirements.txt instalado en status/.deps_hash.
 # Si el hash actual difiere (alguien actualizo el archivo y pusheo), reinstalamos
@@ -82,7 +93,14 @@ fi
 TODAY_TAG="[run:$FILE_DATE]"
 LAST_COMMIT_MSG=$(git log origin/main --format=%s -5 2>/dev/null || echo "")
 if echo "$LAST_COMMIT_MSG" | grep -qF "$TODAY_TAG"; then
-    log_message "Otro nodo ya ejecuto hoy ($TODAY_TAG). Saliendo limpio."
+    log_message "Otro nodo ya ejecuto hoy ($TODAY_TAG). Pulso dup_skip y salgo."
+    pulse "dup_skip" "commit-marker $TODAY_TAG ya presente"
+    # Push del heartbeat asi otros nodos ven el pulso.
+    git add status/heartbeat.json 2>/dev/null || true
+    if ! git diff --cached --quiet 2>/dev/null; then
+        git commit -m "chore: pulse $HOSTNAME dup_skip [skip ci]" >>"$LOG_FILE" 2>&1 || true
+        git push origin HEAD:main >>"$LOG_FILE" 2>&1 || true
+    fi
     exit 0
 fi
 
@@ -104,7 +122,13 @@ if [ "$ROLE" = "backup" ]; then
     log_message "Nodo Secundario. Verificando archivo de datos en GitHub..."
     URL="https://raw.githubusercontent.com/JorgeTricarico/El-Industrial/main/data/lista_precio_${FILE_DATE}_json_compres.gz"
     if curl --output /dev/null --silent --head --fail "$URL"; then
-        log_message "El archivo ya existe en GitHub (Nodo Principal OK). Finalizando sin cambios."
+        log_message "El archivo ya existe en GitHub (Nodo Principal OK). Pulso dup_skip y salgo."
+        pulse "dup_skip" "primary ya genero $URL"
+        git add status/heartbeat.json 2>/dev/null || true
+        if ! git diff --cached --quiet 2>/dev/null; then
+            git commit -m "chore: pulse $HOSTNAME dup_skip backup [skip ci]" >>"$LOG_FILE" 2>&1 || true
+            git push origin HEAD:main >>"$LOG_FILE" 2>&1 || true
+        fi
         exit 0
     fi
     log_message "AVISO: No se encontro el archivo de hoy en GitHub. Procediendo como backup..."
@@ -120,7 +144,17 @@ python3 "$SCRIPT_DIR/update_products.py"
 PY_EXIT_CODE=$?
 
 if [ $PY_EXIT_CODE -ne 0 ]; then
-    log_message "CRÍTICO: El script de Python falló con código $PY_EXIT_CODE."
+    log_message "CRÍTICO: update_products fallo con código $PY_EXIT_CODE."
+    pulse "supplier_fail" "update_products exit=$PY_EXIT_CODE"
+    # Igual corremos nightly_report: la garantia Lun-Sab mandara filler supplier_down.
+    log_message "Corriendo nightly_report para que el filler 'supplier_down' garantice mensaje al cliente..."
+    python3 "$SCRIPT_DIR/nightly_report.py" >>"$LOG_FILE" 2>&1 || true
+    # Commit/push del heartbeat (con pulso supplier_fail) para trazabilidad
+    git add status/heartbeat.json 2>/dev/null || true
+    if ! git diff --cached --quiet 2>/dev/null; then
+        git commit -m "chore: pulse $HOSTNAME supplier_fail $TODAY_TAG [skip ci]" >>"$LOG_FILE" 2>&1 || true
+        git push origin HEAD:main >>"$LOG_FILE" 2>&1 || true
+    fi
     exit 1
 fi
 
@@ -141,13 +175,21 @@ python3 "$SCRIPT_DIR/nightly_report.py"
 NR_EXIT_CODE=$?
 if [ $NR_EXIT_CODE -eq 0 ]; then
     log_message "Nightly OK (exit=0). Telegram deberia haber recibido el informe."
+    pulse "updated" "update_products+nightly OK"
 else
     log_message "ADVERTENCIA: nightly_report.py salio con codigo $NR_EXIT_CODE. Revisar status/metrics.jsonl."
+    pulse "nightly_fail" "exit=$NR_EXIT_CODE"
 fi
 
 # --- No pushear si es un nodo de backup ---
 if [ "$ROLE" = "backup" ]; then
     log_message "Nodo Secundario (Backup): No se realizará push a GitHub para evitar conflictos."
+    # Backup igual pushea SU heartbeat para trazabilidad (no los .gz)
+    git add status/heartbeat.json 2>/dev/null || true
+    if ! git diff --cached --quiet 2>/dev/null; then
+        git commit -m "chore: pulse $HOSTNAME backup updated $TODAY_TAG [skip ci]" >>"$LOG_FILE" 2>&1 || true
+        git push origin HEAD:main >>"$LOG_FILE" 2>&1 || log_message "push de heartbeat fallo (backup)."
+    fi
     exit 0
 fi
 

@@ -6,12 +6,22 @@ son obligatorias. Romperlas ya nos costó horas y ensució produccion.
 
 ## Qué es este repo
 
-SaaS de monitoreo de precios B2B para PyMEs argentinas. Arquitectura 3-nodos:
+SaaS de monitoreo de precios B2B para PyMEs argentinas. Arquitectura **cluster
+multi-nodo reproducible** (ver `infra/nodes.yml` y `infra/README.md`):
 
-- **Raspberry Pi** (`100.112.235.98` via Tailscale): cron real, fetch a APIs
-  de proveedores (Bertual, Haedo), genera data, push a GitHub.
-- **Linux Mint** (laptop secundaria, Tailscale): nodo de respaldo + dev local.
-- **GitHub Actions**: fallback si Pi/Mint caen, observabilidad, E2E semanal.
+- **Raspberry Pi** (`100.112.235.98` via Tailscale): nodo `primary`, cron real.
+- **Linux Mint / WSL / RV420 / etc**: nodos `backup` con cron escalonado.
+  Cada device clona el repo, corre `scripts/setup_node.sh <role> <offset>`,
+  y queda activo.
+- **GitHub Actions**: nodo `cloud_last_resort`. **NO actualiza precios**
+  (probado 2026-05-18: Bertual timeout 30s desde GH runners). Solo manda
+  filler "supplier no respondio" si todos los nodos locales mueren.
+
+Cada nodo pulsea `status/heartbeat.json` en cada corrida (incluso cuando
+no hace trabajo útil) → trazabilidad total. `system_audit.check_cluster_registry`
+cruza `infra/nodes.yml` con heartbeat y alerta de nodos caídos.
+
+Para sumar un device nuevo: ver `infra/README.md`.
 
 Cada cliente vive en `tenants/<slug>/` self-contained. `tenants/_registry.yml`
 es la fuente de verdad. Cada tenant tiene su propio site Netlify deploy

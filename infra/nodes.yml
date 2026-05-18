@@ -1,0 +1,76 @@
+# Registry de nodos del cluster.
+# Cada device que corre el proyecto se registra aca. Es la fuente de verdad
+# del cluster: qué hostname corre dónde, con qué cron, qué puede hacer, qué
+# estado tiene. system_audit cruza esto contra heartbeat.json para detectar
+# nodos caídos o sin pulso.
+#
+# COMO AGREGAR UN NODO:
+#   1. setup_node.sh genera la entrada automaticamente. O la agregas a mano.
+#   2. hostname debe matchear `socket.gethostname()` del device.
+#   3. Bumpear su `state` a `active` cuando esté corriendo.
+#
+# CAMPOS:
+#   hostname            Match exacto con socket.gethostname() del nodo.
+#   role                primary | backup | dev | cloud_last_resort
+#   cron                Expresion crontab del nodo (info, no se aplica desde aca).
+#   location            Descripcion legible (Tailscale IP, ubicacion fisica, etc).
+#   can_fetch_supplier  True si el nodo llega a la API de Bertual (probado).
+#   can_push_github     True si tiene credencial para git push.
+#   state               active | paused_offline | pending_onboard | dev | retired
+
+nodes:
+  - hostname: raspberrypi
+    role: primary
+    cron: "0 20,22 * * 1-6"        # Lun-Sab 20:00 y 22:00 AR
+    location: "Tailscale 100.112.235.98"
+    can_fetch_supplier: true
+    can_push_github: true
+    state: active
+    notes: |
+      Nodo primario. Cron real, fetcha Bertual. SD card es punto unico de
+      falla — si muere, los demas nodos cubren.
+
+  - hostname: DESKTOP-MI43BOU
+    role: backup
+    cron: "0 21 * * 1-6"           # Lun-Sab 21:00 AR (offset +1h del primary)
+    location: "WSL Jorge personal"
+    can_fetch_supplier: true
+    can_push_github: true
+    state: pending_onboard         # bumpear a active cuando configures cron
+    notes: |
+      Backup desde WSL personal. Activo solo cuando la PC esta prendida.
+      Util para desarrollo + redundancia ocasional.
+
+  - hostname: rv420
+    role: backup
+    cron: "30 21 * * 1-6"          # 21:30 AR
+    location: "Note antigua RV420"
+    can_fetch_supplier: true
+    can_push_github: true
+    state: pending_onboard
+    notes: |
+      Note vieja como nodo dedicado. Idealmente prendida 24/7 con bateria
+      y red wifi de la casa.
+
+  - hostname: linux-mint
+    role: backup
+    cron: "30 20 * * 1-6"          # 20:30 AR
+    location: "Laptop secundaria"
+    can_fetch_supplier: true
+    can_push_github: true
+    state: paused_offline
+    notes: |
+      Estaba corriendo, se quedo fuera de red hace dias. Cuando vuelva,
+      bumpear a active.
+
+  - hostname: github-actions
+    role: cloud_last_resort
+    cron: "30 23 * * *"            # 20:30 AR via UTC
+    location: "ubuntu-latest"
+    can_fetch_supplier: false      # PROBADO 2026-05-18: timeout 30s, Bertual bloquea/no rutea
+    can_push_github: true
+    state: active
+    notes: |
+      Solo pulso + filler messages. NO actualiza precios (Bertual no
+      responde desde GH runners). Sirve como "alguien al menos avisa al
+      cliente" si todos los nodos locales mueren.

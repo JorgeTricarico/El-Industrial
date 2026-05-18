@@ -249,6 +249,38 @@
 
 ---
 
+## Hitos arquitectura cluster (2026-05-18)
+
+### H4 — Onboarding manual de nodos backup
+
+- **status**: pending (acción manual del user)
+- **prioridad**: ALTA (sin esto, Pi sigue siendo SPOF)
+
+**Scope**:
+1. En la **WSL del PC personal** (`DESKTOP-MI43BOU`):
+   ```bash
+   cd /home/jorge/Documents/Github/El-Industrial
+   ./scripts/setup_node.sh backup 60   # 21:00 AR Lun-Sab
+   ```
+   Completar `.env` con creds de la Pi.
+
+2. En la **RV420** (note vieja):
+   ```bash
+   git clone https://github.com/JorgeTricarico/El-Industrial.git
+   cd El-Industrial
+   ./scripts/setup_node.sh backup 90   # 21:30 AR Lun-Sab
+   ```
+
+3. Cuando vuelva **Linux Mint**: re-bootstrap (idempotente) y bumpear su
+   estado en `infra/nodes.yml` a `active`.
+
+**Acceptance**:
+- `system_audit.check_cluster_registry()` muestra los nodos pulsando OK.
+- Si la Pi se apaga 24h, WSL/RV420 toman el trabajo y el cliente recibe
+  Telegram igual.
+
+---
+
 ## Pendientes detectados en revisión 2026-05-18
 
 ### P1 — Skip items=0 + dead-man semanal

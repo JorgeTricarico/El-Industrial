@@ -274,3 +274,54 @@ def test_check_log_sizes_over_threshold(monkeypatch, tmp_path):
     monkeypatch.setattr(system_audit, "LOG_SIZE_WARN_MB", 1.0)
     problems = system_audit.check_log_sizes()
     assert any("metrics.jsonl" in p for p in problems)
+
+
+def test_cluster_registry_alerts_active_without_pulse(tmp_path, monkeypatch):
+    """Nodo declarado active sin pulso en heartbeat -> alerta."""
+    infra = tmp_path / "infra"
+    infra.mkdir()
+    (infra / "nodes.yml").write_text(
+        "nodes:\n"
+        "  - hostname: ghost-node\n"
+        "    role: primary\n"
+        "    state: active\n"
+    )
+    (tmp_path / "status").mkdir()
+    (tmp_path / "status" / "heartbeat.json").write_text('{"nodes":{}}')
+    monkeypatch.setattr(system_audit, "BASE_DIR", str(tmp_path))
+    monkeypatch.setattr(system_audit, "STATUS_DIR", str(tmp_path / "status"))
+    problems = system_audit.check_cluster_registry()
+    assert any("ghost-node" in p and "nunca pulso" in p for p in problems)
+
+
+def test_cluster_registry_alerts_undeclared_pulser(tmp_path, monkeypatch):
+    """Nodo que pulsa pero no esta en nodes.yml -> alerta."""
+    infra = tmp_path / "infra"
+    infra.mkdir()
+    (infra / "nodes.yml").write_text("nodes: []")
+    (tmp_path / "status").mkdir()
+    (tmp_path / "status" / "heartbeat.json").write_text(
+        '{"nodes":{"surprise-node":{"last_run":"2026-05-18T20:00:00"}}}'
+    )
+    monkeypatch.setattr(system_audit, "BASE_DIR", str(tmp_path))
+    monkeypatch.setattr(system_audit, "STATUS_DIR", str(tmp_path / "status"))
+    problems = system_audit.check_cluster_registry()
+    assert any("surprise-node" in p for p in problems)
+
+
+def test_cluster_registry_silent_when_paused(tmp_path, monkeypatch):
+    """Nodo declarado paused_offline NO alerta aunque no pulse."""
+    infra = tmp_path / "infra"
+    infra.mkdir()
+    (infra / "nodes.yml").write_text(
+        "nodes:\n"
+        "  - hostname: sleeping-node\n"
+        "    role: backup\n"
+        "    state: paused_offline\n"
+    )
+    (tmp_path / "status").mkdir()
+    (tmp_path / "status" / "heartbeat.json").write_text('{"nodes":{}}')
+    monkeypatch.setattr(system_audit, "BASE_DIR", str(tmp_path))
+    monkeypatch.setattr(system_audit, "STATUS_DIR", str(tmp_path / "status"))
+    problems = system_audit.check_cluster_registry()
+    assert all("sleeping-node" not in p for p in problems)

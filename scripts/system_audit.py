@@ -333,6 +333,71 @@ def check_log_sizes():
     return problems
 
 
+def check_cluster_registry():
+    """Cruza infra/nodes.yml con heartbeat.json y detecta:
+    - Nodos declarados active sin pulso reciente.
+    - Nodos con pulso pero NO declarados en nodes.yml (sin onboardear).
+    """
+    problems = []
+    registry_path = os.path.join(BASE_DIR, "infra", "nodes.yml")
+    if not os.path.exists(registry_path):
+        return problems
+    try:
+        import yaml
+        with open(registry_path, "r", encoding="utf-8") as f:
+            registry = yaml.safe_load(f) or {}
+    except Exception as e:
+        return [f"infra/nodes.yml ilegible: {e}"]
+
+    sys.path.insert(0, SCRIPT_DIR)
+    try:
+        import heartbeat_io
+    finally:
+        if SCRIPT_DIR in sys.path:
+            sys.path.remove(SCRIPT_DIR)
+    hb = heartbeat_io.read(STATUS_DIR)
+    pulsed_hosts = set(hb.get("nodes", {}).keys())
+    declared = {n["hostname"]: n for n in registry.get("nodes", []) if n.get("hostname")}
+
+    # Nodos active sin pulso reciente
+    for hostname, node in declared.items():
+        if node.get("state") != "active":
+            continue
+        if hostname == "github-actions":
+            continue  # GH no escribe heartbeat por si mismo (corre en ubuntu-latest efimero)
+        entry = hb.get("nodes", {}).get(hostname)
+        if not entry:
+            problems.append(
+                f"nodo declarado active '{hostname}' nunca pulso en heartbeat. "
+                f"Verificar cron / venv / push permissions."
+            )
+            continue
+        last = entry.get("last_run")
+        if not last:
+            problems.append(f"nodo '{hostname}' sin campo last_run en heartbeat.")
+            continue
+        try:
+            dt = datetime.fromisoformat(last)
+            hours_ago = (datetime.now() - dt).total_seconds() / 3600
+            if hours_ago > 36:
+                problems.append(
+                    f"nodo active '{hostname}' sin pulso hace {hours_ago:.1f}h "
+                    f"(role={node.get('role')}, cron={node.get('cron')!r}). "
+                    f"Posible cron roto o nodo caido."
+                )
+        except ValueError:
+            problems.append(f"nodo '{hostname}': last_run no parseable: {last!r}")
+
+    # Nodos con pulso pero no declarados (sin onboardear)
+    undeclared = pulsed_hosts - set(declared.keys())
+    for hostname in undeclared:
+        problems.append(
+            f"nodo '{hostname}' pulsa pero NO esta en infra/nodes.yml. "
+            f"Onboardearlo (state, role, cron, location)."
+        )
+    return problems
+
+
 def run_audit():
     """Corre todas las checks. Retorna (sections, total_problems).
     sections es dict {section_name: [problemas]}. total_problems es int.
@@ -342,6 +407,7 @@ def run_audit():
         "Tenants (deploys frescos)": check_tenants_deploys(tenants),
         ".env (keys requeridas)": check_env_keys(tenants),
         "Nodos (heartbeat reciente)": check_node_heartbeats(),
+        "Cluster (registry vs pulso)": check_cluster_registry(),
         "Archivos viejos (data/archive)": check_archive_stale(),
         "Logs append-only (tamano)": check_log_sizes(),
         "Workflows GH (rachas de fallos)": check_workflow_failures(),
