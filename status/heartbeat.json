@@ -14,5 +14,13 @@
       "role_declared": "primary",
       "note": "verificacion post-fix-gitignore"
     }
+  },
+  "last_telegram_iso": "2026-05-17T23:32:46.506435",
+  "last_telegram_provider": "sambanova",
+  "tenants": {
+    "demo-electricidad": {
+      "last_telegram_iso": "2026-05-17T23:32:46.506435",
+      "last_telegram_provider": "sambanova"
+    }
   }
 }
