@@ -138,54 +138,6 @@ def test_diff_items_detects_new_and_updated():
     assert changes["updated"][0]["new"] == "20.00"
 
 
-# ---------- sanity_check_prices ----------
-
-def test_sanity_check_reverts_huge_jumps():
-    """Cambio +107420% se rechaza, precio queda como el viejo."""
-    new_items = [{"producto": "X", "detalle": "x", "precio": "1075.20"}]
-    old_data = {"X": {"producto": "X", "precio": "1.00"}}
-    out, sus = update_products.sanity_check_prices(new_items, old_data, max_pct=50)
-    assert out[0]["precio"] == "1.00", "deberia haberse revertido al viejo"
-    assert len(sus) == 1
-    assert sus[0]["code"] == "X"
-    assert sus[0]["pct"] > 50
-
-
-def test_sanity_check_allows_small_changes():
-    """Cambios bajo el umbral pasan sin tocar."""
-    new_items = [{"producto": "X", "detalle": "x", "precio": "110.00"}]
-    old_data = {"X": {"producto": "X", "precio": "100.00"}}
-    out, sus = update_products.sanity_check_prices(new_items, old_data, max_pct=50)
-    assert out[0]["precio"] == "110.00"
-    assert sus == []
-
-
-def test_sanity_check_ignores_new_items():
-    """Items que no estan en old_data no se chequean (no hay baseline)."""
-    new_items = [{"producto": "NUEVO", "detalle": "x", "precio": "999999"}]
-    old_data = {}
-    out, sus = update_products.sanity_check_prices(new_items, old_data, max_pct=50)
-    assert out[0]["precio"] == "999999"
-    assert sus == []
-
-
-def test_sanity_check_handles_zero_old_price():
-    """Si old_price es 0, evita divide-by-zero y deja pasar el item."""
-    new_items = [{"producto": "X", "detalle": "x", "precio": "100.00"}]
-    old_data = {"X": {"producto": "X", "precio": "0.00"}}
-    out, sus = update_products.sanity_check_prices(new_items, old_data, max_pct=50)
-    assert out[0]["precio"] == "100.00"
-    assert sus == []
-
-
-def test_sanity_check_drops_when_unparseable():
-    """Si el precio viejo no es parseable, ignora el item silenciosamente."""
-    new_items = [{"producto": "X", "detalle": "x", "precio": "10.00"}]
-    old_data = {"X": {"producto": "X", "precio": "no-es-numero"}}
-    out, sus = update_products.sanity_check_prices(new_items, old_data, max_pct=50)
-    assert sus == []
-
-
 # ---------- process_tenant ----------
 
 def test_process_tenant_skips_inactive():

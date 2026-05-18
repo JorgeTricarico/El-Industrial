@@ -190,99 +190,6 @@ def read_old_items(tenant_dir):
         return {}
 
 
-DEFAULT_MAX_DIFF_PCT = float(os.getenv("MAX_PRICE_DIFF_PCT", "50"))
-
-
-def sanity_check_prices(new_items, old_data, max_pct=None):
-    """Atrapa diffs absurdos (precio decimal corrido, currency mix, bug del
-    proveedor). Para cada item con cambio > max_pct vs el precio anterior:
-      - REVIERTE el precio del item al valor viejo (no publicamos basura al cliente)
-      - Lo registra en la lista 'suspicious' para que el caller alerte al dev
-
-    Items nuevos (no estaban en old_data) NO se chequean: sin baseline no
-    podemos saber si el primer precio que vemos es razonable.
-
-    Por default usa MAX_PRICE_DIFF_PCT del env (50% si no esta seteada).
-    Tenant config puede pisarlo via tenant_config['max_price_diff_pct'].
-
-    Retorna (new_items_filtrados, suspicious_list). new_items se muta in-place.
-    """
-    if max_pct is None:
-        max_pct = DEFAULT_MAX_DIFF_PCT
-    suspicious = []
-    for item in new_items:
-        code = item.get("producto")
-        if not code or code not in old_data:
-            continue
-        try:
-            old_p = float(old_data[code]["precio"])
-            new_p = float(item["precio"])
-        except (TypeError, ValueError, KeyError):
-            continue
-        if old_p <= 0:
-            continue
-        pct = abs((new_p - old_p) / old_p) * 100
-        if pct > max_pct:
-            suspicious.append({
-                "code": code,
-                "old": old_data[code]["precio"],
-                "new": item["precio"],
-                "pct": round(pct, 1),
-                "name": item.get("detalle", "")[:80],
-            })
-            item["precio"] = old_data[code]["precio"]  # revertir
-    return new_items, suspicious
-
-
-def alert_suspicious_prices(slug, supplier_name, suspicious):
-    """Manda alerta al admin (NUNCA al cliente) cuando hay precios sospechosos.
-    NO-OP por default en tests (conftest mockea send_alert)."""
-    if not suspicious:
-        return False
-    try:
-        from dotenv import load_dotenv
-        load_dotenv(ENV_FILE)
-        import clients as _c
-    except ImportError:
-        return False
-    token = os.getenv("TELEGRAM_TOKEN")
-    if not token:
-        return False
-    recipients = _c.recipients_for("alert", legacy_chat_id=os.getenv("TELEGRAM_CHAT_ID"))
-    if not recipients:
-        return False
-
-    body = (
-        f"⚠️ <b>Precios sospechosos rechazados — {slug}</b> <i>(solo dev)</i>\n"
-        f"Supplier: {supplier_name}\n"
-        f"Umbral: {DEFAULT_MAX_DIFF_PCT:.0f}%. "
-        f"Items con diff mayor se DESCARTARON del .gz publicado.\n\n"
-        f"<b>{len(suspicious)} item(s) afectados:</b>\n"
-    )
-    for s in suspicious[:15]:
-        body += f"• {s['code']} ({s['name']}): {s['old']} → {s['new']} ({s['pct']:+.0f}%)\n"
-    if len(suspicious) > 15:
-        body += f"• ... y {len(suspicious) - 15} mas\n"
-    body += (
-        "\n<i>El cliente sigue viendo el precio anterior hasta que se confirme. "
-        "Revisar respuesta de la API del proveedor.</i>"
-    )
-
-    url = f"https://api.telegram.org/bot{token}/sendMessage"
-    sent = 0
-    for chat_id, _name in recipients:
-        try:
-            r = requests.post(
-                url, data={"chat_id": chat_id, "text": body, "parse_mode": "HTML"},
-                timeout=15,
-            )
-            if r.ok:
-                sent += 1
-        except Exception:
-            pass
-    return sent > 0
-
-
 def diff_items(new_items, old_data):
     changes = {"updated": [], "new": []}
     for item in new_items:
@@ -399,19 +306,9 @@ def process_tenant(tenant, silent=False):
 
     old_data = read_old_items(tenant_dir)
 
-    # Sanity check: cambios > max_pct se descartan (precio publicado queda
-    # el viejo) y se alerta al dev. Tenant config puede pisar el umbral.
-    max_pct = float(config.get("max_price_diff_pct", DEFAULT_MAX_DIFF_PCT))
-    new_items, suspicious = sanity_check_prices(new_items, old_data, max_pct=max_pct)
-    if suspicious:
-        print(f"[{slug}] {len(suspicious)} precio(s) sospechoso(s) rechazado(s) (umbral {max_pct}%)",
-              file=sys.stderr)
-        for s in suspicious[:5]:
-            print(f"  - {s['code']}: {s['old']} -> {s['new']} ({s['pct']:+.0f}%)",
-                  file=sys.stderr)
-        alert_suspicious_prices(slug, supplier_name, suspicious)
-        result["suspicious"] = len(suspicious)
-
+    # Confiamos en el proveedor: lo que dice Bertual es la verdad. NO se
+    # revierten precios ni se filtra por magnitud. La clasificacion de
+    # magnitud para el TONO del mensaje vive en nightly_report.classify_magnitude.
     changes = diff_items(new_items, old_data)
 
     # accum per-tenant
