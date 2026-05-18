@@ -102,3 +102,47 @@ def test_active_tenant_recibe_mirror_durante_transicion(fake_repo):
     sync_tenants.main()
     t = fake_repo / "tenants" / "cliente-active"
     assert (t / "data" / "lista_precio_26-05-17_json_compres.gz").exists()
+
+
+def test_no_borra_gz_del_tenant_si_es_mas_fresco(fake_repo):
+    """BUG (2026-05-18): sync_tenants borraba el .gz fresco que update_products
+    acababa de escribir si el root estaba mas viejo. Fix: solo mirror si root
+    es mas reciente que tenant."""
+    import sync_tenants
+    tenant_dir = fake_repo / "tenants" / "active-x"
+    tenant_data = tenant_dir / "data"
+    tenant_data.mkdir(parents=True)
+    # Tenant tiene .gz fresco del 18-may
+    (tenant_data / "lista_precio_26-05-18_json_compres.gz").write_bytes(b"FRESCO_18")
+    # Root tiene uno mas viejo del 17-may
+    root_data = fake_repo / "data"
+    root_data.mkdir(parents=True, exist_ok=True)
+    (root_data / "lista_precio_26-05-17_json_compres.gz").write_bytes(b"VIEJO_17")
+
+    sync_tenants.mirror_data_to_tenant("active-x", str(tenant_dir))
+
+    # El .gz fresco del tenant NO debe ser borrado.
+    assert (tenant_data / "lista_precio_26-05-18_json_compres.gz").exists()
+    # El pointer debe apuntar al fresco.
+    pointer = (tenant_dir / "latest-json-filename.txt").read_text().strip()
+    assert "26-05-18" in pointer, f"pointer apunta a {pointer!r}"
+
+
+def test_si_root_mas_fresco_si_actualiza_tenant(fake_repo):
+    """Caso legacy: tenant vacio o con .gz viejo, root tiene fresco -> copia."""
+    import sync_tenants
+    tenant_dir = fake_repo / "tenants" / "testing-y"
+    tenant_data = tenant_dir / "data"
+    tenant_data.mkdir(parents=True)
+    (tenant_data / "lista_precio_26-05-15_json_compres.gz").write_bytes(b"VIEJO_15")
+    root_data = fake_repo / "data"
+    root_data.mkdir(parents=True, exist_ok=True)
+    (root_data / "lista_precio_26-05-18_json_compres.gz").write_bytes(b"FRESCO_18")
+
+    sync_tenants.mirror_data_to_tenant("testing-y", str(tenant_dir))
+
+    assert (tenant_data / "lista_precio_26-05-18_json_compres.gz").exists()
+    # El viejo se borra
+    assert not (tenant_data / "lista_precio_26-05-15_json_compres.gz").exists()
+    pointer = (tenant_dir / "latest-json-filename.txt").read_text().strip()
+    assert "26-05-18" in pointer

@@ -40,15 +40,29 @@ if ! [[ "$CRON_OFFSET" =~ ^[0-9]+$ ]] || [ "$CRON_OFFSET" -gt 180 ]; then
     exit 1
 fi
 
-# Calculamos hora HH:MM AR a partir de 20:00 + offset
-CRON_HOUR=$((20 + CRON_OFFSET / 60))
-CRON_MIN=$((CRON_OFFSET % 60))
+# Calculamos hora HH:MM en AR a partir de 20:00 + offset, luego convertimos
+# a la TZ del sistema (porque cron NO respeta TZ env, usa el reloj del sistema).
+AR_HOUR=$((20 + CRON_OFFSET / 60))
+AR_MIN=$((CRON_OFFSET % 60))
+
+# Detectar la TZ del sistema. WSL/Docker suelen ser UTC; Pi suele ser AR.
+SYS_TZ=$(timedatectl show -p Timezone --value 2>/dev/null || cat /etc/timezone 2>/dev/null || echo "Etc/UTC")
+if [[ "$SYS_TZ" == "America/Argentina/Buenos_Aires" ]] || [[ "$SYS_TZ" == "America/Buenos_Aires" ]]; then
+    CRON_HOUR=$AR_HOUR
+    TZ_NOTE="(sistema en TZ AR, cron usa hora local)"
+else
+    # AR es UTC-3. Cron en UTC corre 3h despues del horario AR.
+    CRON_HOUR=$(( (AR_HOUR + 3) % 24 ))
+    TZ_NOTE="(sistema en $SYS_TZ; cron en UTC = AR + 3h)"
+fi
+CRON_MIN=$AR_MIN
 CRON_EXPR="${CRON_MIN} ${CRON_HOUR} * * 1-6"
 
 echo "==================================="
 echo "Bootstrap nodo: $HOST"
 echo "Role:           $ROLE"
-echo "Cron:           $CRON_EXPR  (Lun-Sab ${CRON_HOUR}:$(printf '%02d' $CRON_MIN) AR)"
+echo "Cron:           $CRON_EXPR  (Lun-Sab ${CRON_HOUR}:$(printf '%02d' $CRON_MIN) hora local = ${AR_HOUR}:$(printf '%02d' $AR_MIN) AR)"
+echo "TZ del sistema: $SYS_TZ $TZ_NOTE"
 echo "==================================="
 
 # 1. Verificar python3

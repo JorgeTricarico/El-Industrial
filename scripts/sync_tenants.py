@@ -73,43 +73,70 @@ def _file_differs(a, b):
 
 
 def mirror_data_to_tenant(tenant_slug, tenant_dir):
-    """Copia el .gz mas reciente de data/ raiz al tenant.
+    """Copia el .gz mas reciente de data/ raiz al tenant — SOLO si el tenant
+    no tiene uno mas fresco.
 
-    Se invoca para tenants 'testing' (no tienen API propia, viven del raiz) y
-    para tenants 'active' que todavia comparten la API del raiz (caso
-    pre-refactor de update_products). Una vez que update_products escriba
-    directo a tenants/<slug>/data/, podemos saltearlo si el supplier_account
-    es propio del tenant.
+    Post-M1 (2026-05-17): update_products escribe directo a tenants/<slug>/data/.
+    Esta funcion existia para legacy 'testing' que vivian del root. Pero si
+    update_products ya escribio al tenant con fecha >= root, NO debemos copiar
+    porque sobreescribimos data buena con vieja.
+
+    Regla: comparar el nombre del .gz mas reciente del tenant vs root.
+    - Si tenant >= root: no tocar nada (tenant ya tiene data fresca o igual).
+    - Si root > tenant: copiar (legacy testing).
+    - Si tenant no tiene .gz: copiar (bootstrap inicial).
     """
     src_data = os.path.join(BASE_DIR, "data")
     if not os.path.isdir(src_data):
         return False
-    gz_files = sorted(
+    root_gz = sorted(
         [f for f in os.listdir(src_data) if f.endswith(".gz")],
         reverse=True,
     )
-    if not gz_files:
+    if not root_gz:
         return False
-    latest = gz_files[0]
+    latest_root = root_gz[0]
 
     dst_data = os.path.join(tenant_dir, "data")
     os.makedirs(dst_data, exist_ok=True)
-    src = os.path.join(src_data, latest)
-    dst = os.path.join(dst_data, latest)
+    tenant_gz = sorted(
+        [f for f in os.listdir(dst_data) if f.endswith(".gz")],
+        reverse=True,
+    )
+    latest_tenant = tenant_gz[0] if tenant_gz else ""
+
+    # Comparacion por nombre de archivo (lista_precio_YY-MM-DD_...). Como YY-MM-DD
+    # es lexicograficamente ordenable, el max() string es el mas reciente.
+    if latest_tenant >= latest_root and latest_tenant:
+        # Tenant tiene >= que root. No tocar. Solo asegurar que el pointer
+        # apunta al .gz del tenant.
+        pointer_txt = os.path.join(tenant_dir, "latest-json-filename.txt")
+        with open(pointer_txt, "w", encoding="utf-8") as f:
+            f.write("data/" + latest_tenant + "\n")
+        pointer_json = os.path.join(tenant_dir, "latest-json-filename.json")
+        with open(pointer_json, "w", encoding="utf-8") as f:
+            json.dump({"filename": "data/" + latest_tenant}, f)
+        return True
+
+    # root > tenant -> legacy copy.
+    src = os.path.join(src_data, latest_root)
+    dst = os.path.join(dst_data, latest_root)
     if not os.path.exists(dst) or _file_differs(src, dst):
         shutil.copy2(src, dst)
 
-    # Actualizar pointers
+    # Actualizar pointers al root
     pointer_txt = os.path.join(tenant_dir, "latest-json-filename.txt")
     with open(pointer_txt, "w", encoding="utf-8") as f:
-        f.write("data/" + latest + "\n")
+        f.write("data/" + latest_root + "\n")
     pointer_json = os.path.join(tenant_dir, "latest-json-filename.json")
     with open(pointer_json, "w", encoding="utf-8") as f:
-        json.dump({"filename": "data/" + latest}, f)
+        json.dump({"filename": "data/" + latest_root}, f)
 
-    # Borrar .gz viejos del tenant (mantener solo el ultimo)
+    # Borrar .gz viejos del tenant (mantener solo el ultimo del root).
+    # OJO: si el tenant tenia uno mas reciente, ya retornamos arriba; aca solo
+    # caemos cuando root > tenant, asi que el latest del tenant es seguro borrar.
     for f in os.listdir(dst_data):
-        if f.endswith(".gz") and f != latest:
+        if f.endswith(".gz") and f != latest_root:
             try:
                 os.remove(os.path.join(dst_data, f))
             except OSError:
