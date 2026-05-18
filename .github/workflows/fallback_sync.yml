@@ -2,8 +2,11 @@ name: Cloud Fallback Sync
 
 on:
   schedule:
-    - cron: '30 23 * * *' 
-  workflow_dispatch: 
+    # 02:45 UTC = 23:45 AR. DESPUES del Pi cron de las 22:00 AR + buffer.
+    # Y DESPUES del failover.yml (02:30 UTC) — son redundantes pero el
+    # fallback_sync intenta tambien sync front, no solo nightly_report.
+    - cron: '45 2 * * *'
+  workflow_dispatch:
 
 env:
   TZ: America/Argentina/Buenos_Aires

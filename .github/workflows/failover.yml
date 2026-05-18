@@ -2,7 +2,10 @@ name: "Watchdog Failover"
 
 on:
   schedule:
-    - cron: '0 10,22 * * *' # Corre a las 10:00 AM y 10:00 PM UTC
+    # 02:30 UTC = 23:30 AR. DESPUES del ultimo Pi cron (22:00 AR + buffer).
+    # Si corriera antes, generaria falsos positivos: el-industrial no recibio
+    # Telegram todavia, pero la Pi aun no tuvo su chance.
+    - cron: '30 2 * * *'
   workflow_dispatch: # Permite correrlo manualmente para pruebas
 
 env:
