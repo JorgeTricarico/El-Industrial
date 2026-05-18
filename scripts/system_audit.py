@@ -51,25 +51,45 @@ GLOBAL_REQUIRED_KEYS = (
 LLM_KEYS = ("GEMINI_API_KEY", "CEREBRAS_API_KEY", "SAMBANOVA_API_KEY")
 
 
+_ALL_KNOWN_KEYS = (
+    "TELEGRAM_TOKEN", "TELEGRAM_CHAT_ID", "TELEGRAM_TECH_CHAT_ID",
+    "NETLIFY_AUTH_TOKEN",
+    "GEMINI_API_KEY", "CEREBRAS_API_KEY", "SAMBANOVA_API_KEY",
+    "BERTUAL_CUIT", "BERTUAL_PASSWORD", "BERTUAL_CLIENT_ID",
+)
+
+
 def _read_env_keys(path=None):
-    """Devuelve set de claves definidas (no vacias) en .env. {} si no existe."""
-    path = path or ENV_PATH
-    if not os.path.exists(path):
-        return set()
+    """Devuelve set de claves definidas (con valor no vacio).
+
+    Combina:
+    - Variables presentes en os.environ (como GH Actions inyecta los secrets).
+    - Claves en el archivo .env (modo nodo local, .env reside en disco).
+
+    Asi el mismo check funciona en GH runners (sin .env) y en la Pi (con .env).
+    """
     keys = set()
-    try:
-        with open(path, "r", encoding="utf-8") as f:
-            for line in f:
-                line = line.strip()
-                if not line or line.startswith("#") or "=" not in line:
-                    continue
-                k, _, v = line.partition("=")
-                k = k.strip()
-                v = v.strip().strip('"').strip("'")
-                if k and v:
-                    keys.add(k)
-    except OSError:
-        pass
+    # 1. Scrape del .env si existe
+    path = path or ENV_PATH
+    if os.path.exists(path):
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if not line or line.startswith("#") or "=" not in line:
+                        continue
+                    k, _, v = line.partition("=")
+                    k = k.strip()
+                    v = v.strip().strip('"').strip("'")
+                    if k and v:
+                        keys.add(k)
+        except OSError:
+            pass
+    # 2. Fallback: env vars del proceso (GH Actions, cron con vars exportadas).
+    # Solo nos interesan las keys conocidas, para no devolver TODO el environment.
+    for k in _ALL_KNOWN_KEYS:
+        if os.environ.get(k):
+            keys.add(k)
     return keys
 
 

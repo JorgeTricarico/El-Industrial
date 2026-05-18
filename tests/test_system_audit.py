@@ -17,6 +17,18 @@ import pytest
 import system_audit
 
 
+@pytest.fixture(autouse=True)
+def _isolate_env(monkeypatch):
+    """El WSL del dev tiene API keys cargadas via .env. Los tests escriben
+    .env de prueba pero ahora check_env_keys lee tambien os.environ. Aislamos
+    todas las keys conocidas para que cada test parta de cero."""
+    for k in ("TELEGRAM_TOKEN", "TELEGRAM_CHAT_ID", "TELEGRAM_TECH_CHAT_ID",
+              "NETLIFY_AUTH_TOKEN",
+              "GEMINI_API_KEY", "CEREBRAS_API_KEY", "SAMBANOVA_API_KEY",
+              "BERTUAL_CUIT", "BERTUAL_PASSWORD", "BERTUAL_CLIENT_ID"):
+        monkeypatch.delenv(k, raising=False)
+
+
 def _make_tenant_dir(root, slug, gz_age_hours=1):
     tdir = Path(root) / "tenants" / slug / "data"
     tdir.mkdir(parents=True, exist_ok=True)
@@ -89,6 +101,7 @@ def test_check_env_keys_llm_degraded(monkeypatch, tmp_path):
         "TELEGRAM_TOKEN=t\nNETLIFY_AUTH_TOKEN=n\nGEMINI_API_KEY=x\n"
     )
     monkeypatch.setattr(system_audit, "ENV_PATH", str(env_path))
+    # autouse fixture _isolate_env ya limpia os.environ de las keys conocidas.
     problems = system_audit.check_env_keys([])
     # Faltan 2 LLMs -> alerta
     assert any("LLM" in p and "degradada" in p for p in problems)
@@ -325,3 +338,35 @@ def test_cluster_registry_silent_when_paused(tmp_path, monkeypatch):
     monkeypatch.setattr(system_audit, "STATUS_DIR", str(tmp_path / "status"))
     problems = system_audit.check_cluster_registry()
     assert all("sleeping-node" not in p for p in problems)
+
+
+def test_check_env_keys_lee_de_os_environ_cuando_no_hay_archivo(monkeypatch, tmp_path):
+    """En GH Actions no hay .env en disco — las creds vienen como env vars.
+    El audit debe verlas via os.environ."""
+    no_env = tmp_path / "no_existe.env"
+    monkeypatch.setattr(system_audit, "ENV_PATH", str(no_env))
+    monkeypatch.setenv("TELEGRAM_TOKEN", "t")
+    monkeypatch.setenv("TELEGRAM_CHAT_ID", "c")
+    monkeypatch.setenv("NETLIFY_AUTH_TOKEN", "n")
+    monkeypatch.setenv("GEMINI_API_KEY", "g")
+    monkeypatch.setenv("CEREBRAS_API_KEY", "ce")
+    monkeypatch.setenv("SAMBANOVA_API_KEY", "s")
+    problems = system_audit.check_env_keys([])
+    assert problems == [], f"esperaba 0 problemas, vino: {problems}"
+
+
+def test_check_env_keys_combina_archivo_y_env(monkeypatch, tmp_path):
+    """El audit debe combinar lo que esta en .env Y en os.environ."""
+    env_path = tmp_path / ".env"
+    env_path.write_text("TELEGRAM_TOKEN=t\nNETLIFY_AUTH_TOKEN=n\n")
+    monkeypatch.setattr(system_audit, "ENV_PATH", str(env_path))
+    # Los LLMs vienen como env vars (GH Actions style)
+    monkeypatch.setenv("GEMINI_API_KEY", "g")
+    monkeypatch.setenv("CEREBRAS_API_KEY", "ce")
+    monkeypatch.setenv("SAMBANOVA_API_KEY", "s")
+    # Bertual tambien
+    monkeypatch.setenv("BERTUAL_CUIT", "u")
+    monkeypatch.setenv("BERTUAL_PASSWORD", "p")
+    monkeypatch.setenv("BERTUAL_CLIENT_ID", "ci")
+    tenants = [{"slug": "alpha", "state": "active", "supplier": "Bertual"}]
+    assert system_audit.check_env_keys(tenants) == []

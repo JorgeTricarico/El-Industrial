@@ -70,9 +70,12 @@ jobs:
           import sys; sys.path.insert(0, 'scripts')
           import nightly_report
           # Solo validamos que se construya. El tone-check estricto vive en pytest
-          # (tests/test_nightly_report.py::test_prompt_prohibe_palabras_alarmistas).
+          # (tests/test_nightly_report.py::test_prompt_*).
           prompt = nightly_report.build_prompt([], [], [])
-          assert prompt and 'vendedor' in prompt.lower()
-          assert 'pyme' in prompt.lower() or 'ferreteria' in prompt.lower()
+          assert prompt
+          p = prompt.lower()
+          # Persona B2B (mayorista chico que vende a ferreterias/etc).
+          assert 'mayorista' in p, 'falta persona mayorista'
+          assert 'ferreteria' in p, 'falta mencion ferreteria'
           print('OK: prompt construible')
           "
