@@ -3,6 +3,7 @@ import os
 import sys
 import json
 import pytest
+from datetime import datetime, timedelta
 from unittest.mock import patch, MagicMock
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(__file__)), "scripts"))
@@ -374,3 +375,46 @@ def test_prune_borra_archivos_viejos(tmp_path):
 def test_prune_sin_archive_dir_no_explota(tmp_path):
     removed = nightly_report.prune_old_archives(str(tmp_path / "no_existe"), days=90)
     assert removed == 0
+
+
+# ============ DEDUPE PER-TENANT POR DIA ============
+
+def test_dedupe_skips_when_already_sent_today(tmp_path, monkeypatch):
+    """Si heartbeat indica que el tenant ya recibio Telegram hoy, skip."""
+    import heartbeat_io
+    # Setear heartbeat con envio de hoy
+    today_iso = datetime.now().isoformat()
+    heartbeat_io.update_telegram(str(tmp_path), "gemini", today_iso, slug="t1")
+
+    # Crear tenant_dir minimo (no se va a procesar)
+    tenant_dir = tmp_path / "tenants" / "t1" / "status"
+    tenant_dir.mkdir(parents=True)
+    (tenant_dir / "daily_accum.json").write_text('{"updated":{}, "new":{}}')
+
+    monkeypatch.setattr(nightly_report, "STATUS_DIR", str(tmp_path))
+    monkeypatch.setattr(nightly_report, "TENANTS_DIR", str(tmp_path / "tenants"))
+
+    res = nightly_report.process_tenant_report({"slug": "t1", "state": "active"})
+    assert res["status"] == "dup_skip"
+    assert res["sent"] is False
+
+
+def test_dedupe_allows_send_if_yesterday(tmp_path, monkeypatch):
+    """Heartbeat con envio de ayer no bloquea el de hoy."""
+    import heartbeat_io
+    yesterday = (datetime.now() - timedelta(days=1)).isoformat()
+    heartbeat_io.update_telegram(str(tmp_path), "gemini", yesterday, slug="t1")
+    today = datetime.now().strftime("%Y-%m-%d")
+    assert heartbeat_io.already_sent_today(str(tmp_path), "t1", today) is False
+
+
+def test_dedupe_force_send_bypasses_check(tmp_path, monkeypatch):
+    """_force_send=True ignora el dedupe (para E2E)."""
+    import heartbeat_io
+    today_iso = datetime.now().isoformat()
+    heartbeat_io.update_telegram(str(tmp_path), "gemini", today_iso, slug="t1")
+    # Sin accum -> caera en no_accum, no en dup_skip
+    monkeypatch.setattr(nightly_report, "STATUS_DIR", str(tmp_path))
+    monkeypatch.setattr(nightly_report, "TENANTS_DIR", str(tmp_path / "tenants"))
+    res = nightly_report.process_tenant_report({"slug": "t1", "state": "active", "_force_send": True})
+    assert res["status"] != "dup_skip"

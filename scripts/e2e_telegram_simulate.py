@@ -153,7 +153,8 @@ def main(argv=None):
     # Monkeypatch _archive_accum a no-op para no dejar archivos en status/archive/
     # del tenant. Asi NO queda rastro del test en el filesystem.
     print("[4/7] llamando nightly_report.process_tenant_report ...")
-    fake_tenant = {"slug": slug, "state": "active"}
+    # _force_send saltea el dedupe per-tenant (queremos siempre disparar el E2E)
+    fake_tenant = {"slug": slug, "state": "active", "_force_send": True}
     archive_dir = os.path.join(tenant_status, "archive")
     archive_listing_before = set(os.listdir(archive_dir)) if os.path.isdir(archive_dir) else set()
     _orig_archive = nr._archive_accum

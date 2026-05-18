@@ -406,13 +406,13 @@ def _compute_stats(updated_items):
     return top_brands, top_hikes
 
 
-def _update_telegram_heartbeat(provider, status_dir):
-    """Dead-man-switch: registra que el mensaje se envio."""
+def _update_telegram_heartbeat(provider, status_dir, slug=None):
+    """Dead-man-switch + dedupe per-tenant. Registra envio en heartbeat."""
     try:
         import sys as _sys
         _sys.path.insert(0, SCRIPT_DIR)
         import heartbeat_io
-        heartbeat_io.update_telegram(status_dir, provider, datetime.now().isoformat())
+        heartbeat_io.update_telegram(status_dir, provider, datetime.now().isoformat(), slug=slug)
     except (OSError, ImportError) as e:
         log_metric("heartbeat_update_fail", f"{type(e).__name__}: {e}")
 
@@ -444,6 +444,24 @@ def process_tenant_report(tenant):
     if tenant.get("state") not in ("active",):
         result["status"] = f"skip_state_{tenant.get('state')}"
         return result
+
+    # Dedupe per-tenant: si ya mandamos Telegram para este tenant hoy
+    # (cualquier nodo del cluster), no mandar de nuevo. force=True saltea
+    # el chequeo (usado por E2E test).
+    force = tenant.get("_force_send", False)
+    if not force:
+        try:
+            import sys as _sys
+            _sys.path.insert(0, SCRIPT_DIR)
+            import heartbeat_io
+            today_str = datetime.now().strftime("%Y-%m-%d")
+            if heartbeat_io.already_sent_today(STATUS_DIR, slug, today_str):
+                last = heartbeat_io.tenant_last_telegram(STATUS_DIR, slug)
+                log_metric("nightly_dup_skip", f"{slug}: ya enviado hoy ({last})")
+                result["status"] = "dup_skip"
+                return result
+        except Exception as e:
+            log_metric("dedupe_check_fail", f"{type(e).__name__}: {e}")
 
     tenant_status_dir = os.path.join(TENANTS_DIR, slug, "status")
     accum_path = os.path.join(tenant_status_dir, "daily_accum.json")
@@ -493,7 +511,7 @@ def process_tenant_report(tenant):
     log_metric("nightly_done", f"{slug} provider={provider} sent={sent} items={len(updated_items)}")
 
     if sent:
-        _update_telegram_heartbeat(provider, STATUS_DIR)  # heartbeat es global
+        _update_telegram_heartbeat(provider, STATUS_DIR, slug=slug)
     _archive_accum(accum_path, tenant_status_dir)
 
     result.update(status="ok", items=len(updated_items), provider=provider, sent=sent)

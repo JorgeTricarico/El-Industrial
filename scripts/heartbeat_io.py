@@ -1,14 +1,18 @@
 #!/usr/bin/env python3
 """I/O del heartbeat multi-nodo. Centraliza el formato.
 
-Schema actual (post M4, 2026-05-17):
+Schema actual (post M4, 2026-05-17, dedupe per-tenant 2026-05-18):
 {
   "nodes": {
     "raspberrypi":      {"last_run": "...", "status": "ok", "duration_s": 3.2,
                           "version": "abc1234", "last_pulled_iso": "..."},
     "DESKTOP-MI43BOU":  {...}
   },
-  "last_telegram_iso": "...",
+  "tenants": {
+    "el-industrial":     {"last_telegram_iso": "...", "last_telegram_provider": "gemini"},
+    "demo-electricidad": {"last_telegram_iso": "...", "last_telegram_provider": "sambanova"}
+  },
+  "last_telegram_iso": "...",            # global (cualquier tenant)
   "last_telegram_provider": "gemini"
 }
 
@@ -77,12 +81,38 @@ def write_node(status_dir, node_name, fields):
     _write(status_dir, hb)
 
 
-def update_telegram(status_dir, provider, iso):
-    """Telegram es global (cualquier nodo puede mandar el reporte)."""
+def update_telegram(status_dir, provider, iso, slug=None):
+    """Registra envio de Telegram. Si slug se pasa, ademas updatea
+    hb['tenants'][slug] para el dedupe per-tenant. El campo global queda
+    para backward-compat / dead-man-switch generico."""
     hb = read(status_dir)
     hb["last_telegram_iso"] = iso
     hb["last_telegram_provider"] = provider
+    if slug:
+        tenants = hb.setdefault("tenants", {})
+        tenants[slug] = {
+            "last_telegram_iso": iso,
+            "last_telegram_provider": provider,
+        }
     _write(status_dir, hb)
+
+
+def tenant_last_telegram(status_dir, slug):
+    """Devuelve el ISO del ultimo envio de Telegram para este tenant, o ''."""
+    hb = read(status_dir)
+    return (hb.get("tenants") or {}).get(slug, {}).get("last_telegram_iso", "")
+
+
+def already_sent_today(status_dir, slug, today_str):
+    """True si el tenant ya recibio un Telegram hoy.
+    today_str: 'YYYY-MM-DD' en zona horaria local (la del proceso, que en
+    nuestro cron es AR via TZ env).
+    Comparamos por prefijo del ISO (formato '2026-05-18T...').
+    """
+    iso = tenant_last_telegram(status_dir, slug)
+    if not iso:
+        return False
+    return iso[:10] == today_str
 
 
 def iter_nodes(status_dir):
