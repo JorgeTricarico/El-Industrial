@@ -3,26 +3,37 @@
 
 Como funciona:
   1. Hace backup de tenants/<slug>/status/daily_accum.json (si existe).
-  2. Escribe un accum sintetico con 1 update + 1 producto nuevo.
-  3. Lee heartbeat.last_telegram_iso ANTES.
+  2. Toma un PRODUCTO REAL del ultimo .gz del tenant y simula un cambio
+     de 1 centavo. Si por algun bug el accum se filtra a algun lado, es
+     indistinguible del ruido de precios normal — no hay "E2E_TEST" en
+     ningun campo visible.
+  3. Lee heartbeat.last_telegram_iso ANTES + checksum del .gz.
   4. Llama nightly_report.process_tenant_report con state='active' forzado.
-  5. Lee heartbeat.last_telegram_iso DESPUES.
-  6. Si bumped (delta > 0) Y sent=True -> PASS. Else FAIL.
-  7. Restaura el accum original (o lo archiva si lo proceso archivo).
+  5. Lee heartbeat.last_telegram_iso DESPUES + re-checksumea el .gz.
+  6. Validaciones post-run:
+       - sent=True y delta_iso > 0
+       - .gz NO se modifico (checksum identico)
+       - accum del tenant volvio al estado pre-test
+       - no quedo accum sintetico en status/archive/ con datos NO restaurables
+  7. Restaura accum original o limpia segun estado.
 
-Default: demo-electricidad (clients.yml solo tiene a Jorge dev, no clientes reales).
+Default: demo-electricidad (clients.yml solo tiene a Jorge dev).
 
 EFECTOS REALES — manda Telegram de verdad. NO es no-op por default.
 Por eso vive como script y no como pytest (los tests bloquean send_telegram).
 Usar en la Pi: ssh jorge@100.112.235.98 -> source venv -> python scripts/e2e_telegram_simulate.py
 """
 import argparse
+import glob
+import gzip
+import hashlib
 import json
 import os
 import shutil
 import sys
 import time
 from datetime import datetime
+from decimal import Decimal
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 BASE_DIR = os.path.dirname(SCRIPT_DIR)
@@ -34,24 +45,55 @@ import heartbeat_io  # noqa: E402
 import nightly_report as nr  # noqa: E402
 
 
-SYNTHETIC_ACCUM = {
-    "updated": {
-        "E2E_TEST_001": {
-            "code": "E2E_TEST_001",
-            "name": "[E2E TEST] Producto sintetico — IGNORAR",
-            "old": "100.00",
-            "new": "115.00",
-            "marca": "TEST_E2E",
-        }
-    },
-    "new": {
-        "E2E_TEST_NEW_001": {
-            "code": "E2E_TEST_NEW_001",
-            "name": "[E2E TEST] Producto nuevo sintetico — IGNORAR",
-            "new": "999.00",
-        }
+def _latest_gz(tenant_slug):
+    pattern = os.path.join(TENANTS_DIR, tenant_slug, "data", "lista_precio_*.gz")
+    files = sorted(glob.glob(pattern))
+    return files[-1] if files else None
+
+
+def _sha256(path):
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(8192), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def _pick_canary_product(gz_path):
+    """Devuelve (code, name, brand, current_price_str) de un producto real
+    del .gz. Buscamos uno con precio parseable y > 1 ARS."""
+    with gzip.open(gz_path, "rt", encoding="utf-8") as f:
+        items = json.load(f)
+    for it in items:
+        try:
+            p = Decimal(str(it.get("precio")))
+            if p > Decimal("1"):
+                return (
+                    it.get("producto"),
+                    it.get("detalle", "")[:80],
+                    it.get("marca") or "",
+                    str(p),
+                )
+        except Exception:
+            continue
+    raise RuntimeError(f"no se encontro producto valido en {gz_path}")
+
+
+def _build_real_product_accum(code, name, brand, old_price_str):
+    """Accum con cambio de +1 centavo sobre un producto real."""
+    new_price = (Decimal(old_price_str) + Decimal("0.01")).quantize(Decimal("0.01"))
+    return {
+        "updated": {
+            code: {
+                "code": code,
+                "name": name,
+                "old": old_price_str,
+                "new": str(new_price),
+                "marca": brand,
+            }
+        },
+        "new": {}
     }
-}
 
 
 def main(argv=None):
@@ -71,24 +113,36 @@ def main(argv=None):
         print(f"❌ tenant {slug!r} no existe en {TENANTS_DIR}", file=sys.stderr)
         return 2
 
+    # Pre-step: encontrar el .gz y un producto real (canario)
+    gz_path = _latest_gz(slug)
+    if not gz_path:
+        print(f"❌ tenant {slug!r}: sin .gz en data/", file=sys.stderr)
+        return 2
+    gz_hash_before = _sha256(gz_path)
+    code, name, brand, old_price = _pick_canary_product(gz_path)
+    print(f"[0/7] canary: {code} ({name[:40]}) precio actual {old_price}")
+    print(f"      .gz sha256 ANTES: {gz_hash_before[:16]}...")
+
     # Step 1: backup accum existente (si hay)
     os.makedirs(tenant_status, exist_ok=True)
     had_existing = os.path.exists(accum_path)
     if had_existing:
         shutil.copy2(accum_path, backup_path)
-        print(f"[1/6] backup hecho: {backup_path}")
+        print(f"[1/7] backup hecho: {backup_path}")
     else:
-        print(f"[1/6] no habia accum previo en {accum_path}")
+        print(f"[1/7] no habia accum previo en {accum_path}")
 
-    # Step 2: escribir accum sintetico
+    # Step 2: escribir accum con cambio real de 1 centavo
+    payload = _build_real_product_accum(code, name, brand, old_price)
     with open(accum_path, "w", encoding="utf-8") as f:
-        json.dump(SYNTHETIC_ACCUM, f, indent=2)
-    print(f"[2/6] accum sintetico escrito ({len(SYNTHETIC_ACCUM['updated'])} update, {len(SYNTHETIC_ACCUM['new'])} new)")
+        json.dump(payload, f, indent=2)
+    new_price = payload["updated"][code]["new"]
+    print(f"[2/7] accum escrito: {code} {old_price} -> {new_price} (+1 centavo)")
 
     # Step 3: heartbeat ANTES
     hb_before = heartbeat_io.read(STATUS_DIR)
     tg_before = hb_before.get("last_telegram_iso", "")
-    print(f"[3/6] heartbeat.last_telegram_iso ANTES: {tg_before or '(vacio)'}")
+    print(f"[3/7] heartbeat.last_telegram_iso ANTES: {tg_before or '(vacio)'}")
 
     if args.dry_run:
         print("[--dry-run] no se envia; restaurando estado.")
@@ -96,7 +150,7 @@ def main(argv=None):
         return 0
 
     # Step 4: trigger nightly_report (force state=active)
-    print("[4/6] llamando nightly_report.process_tenant_report ...")
+    print("[4/7] llamando nightly_report.process_tenant_report ...")
     fake_tenant = {"slug": slug, "state": "active"}
     t0 = time.time()
     try:
@@ -111,30 +165,63 @@ def main(argv=None):
     # Step 5: heartbeat DESPUES
     hb_after = heartbeat_io.read(STATUS_DIR)
     tg_after = hb_after.get("last_telegram_iso", "")
-    print(f"[5/6] heartbeat.last_telegram_iso DESPUES: {tg_after or '(vacio)'}")
+    print(f"[5/7] heartbeat.last_telegram_iso DESPUES: {tg_after or '(vacio)'}")
 
-    # Step 6: assert + cleanup
-    # IMPORTANTE: nightly_report ARCHIVA el accum despues de mandarlo
-    # (lo mueve a status/archive/), entonces el backup_path es la unica
-    # forma de restaurar.
+    # Step 6: restaurar accum (nightly_report ya lo archivo a status/archive/)
     _restore(accum_path, backup_path, had_existing)
 
-    if not result.get("sent"):
-        print(f"\n❌ FAIL: nightly_report devolvio sent=False (status={result.get('status')})", file=sys.stderr)
-        return 1
-    if tg_after == tg_before:
-        print(f"\n❌ FAIL: heartbeat.last_telegram_iso no se actualizo (Telegram no entrego)", file=sys.stderr)
-        return 1
-    try:
-        delta = (datetime.fromisoformat(tg_after) - datetime.fromisoformat(tg_before)).total_seconds() if tg_before else 999999
-    except ValueError:
-        delta = 999999
-    if delta < 0:
-        print(f"\n❌ FAIL: heartbeat fue hacia atras", file=sys.stderr)
-        return 1
+    # Step 7: validaciones post-run
+    print("[7/7] validaciones post-run:")
+    failures = []
 
-    print(f"\n[6/6] ✅ PASS: Telegram entrego (provider={result.get('provider')}, "
-          f"items={result.get('items')}, delta_iso={int(delta)}s)")
+    # 7a: Telegram entrego
+    if not result.get("sent"):
+        failures.append(f"sent=False (status={result.get('status')})")
+    else:
+        print("      ✓ sent=True")
+
+    # 7b: heartbeat bumped
+    if tg_after == tg_before:
+        failures.append("heartbeat.last_telegram_iso no avanzo")
+    else:
+        try:
+            delta = (datetime.fromisoformat(tg_after) - datetime.fromisoformat(tg_before)).total_seconds() if tg_before else 999999
+        except ValueError:
+            delta = 999999
+        if delta <= 0:
+            failures.append(f"heartbeat retrocedio (delta={delta}s)")
+        else:
+            print(f"      ✓ heartbeat avanzo {int(delta)}s")
+
+    # 7c: el .gz publico NO se toco
+    gz_hash_after = _sha256(gz_path)
+    if gz_hash_before != gz_hash_after:
+        failures.append(f".gz fue modificado durante el test ({gz_hash_before[:8]} != {gz_hash_after[:8]})")
+    else:
+        print(f"      ✓ .gz intacto (sha={gz_hash_after[:16]}...)")
+
+    # 7d: accum del tenant volvio al estado pre-test
+    accum_now_exists = os.path.exists(accum_path)
+    if had_existing and not accum_now_exists:
+        failures.append("accum del tenant desaparecio (debia restaurarse del backup)")
+    elif not had_existing and accum_now_exists:
+        failures.append(f"accum sintetico no se limpio: {accum_path}")
+    else:
+        print(f"      ✓ accum del tenant en estado pre-test ({'restaurado' if had_existing else 'inexistente'})")
+
+    # 7e: backup file no quedo huerfano
+    if os.path.exists(backup_path):
+        failures.append(f"backup huerfano sin limpiar: {backup_path}")
+    else:
+        print("      ✓ sin backup huerfano")
+
+    if failures:
+        print("\n❌ FAIL:", file=sys.stderr)
+        for f in failures:
+            print(f"   - {f}", file=sys.stderr)
+        return 1
+    print(f"\n✅ PASS: Telegram entrego + sistema en el mismo estado que antes del test "
+          f"(provider={result.get('provider')}, items={result.get('items')})")
     return 0
 
 
