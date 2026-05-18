@@ -171,26 +171,35 @@ Why: cuando se sumen clientes pagos, no comparten chat con el dev/ops.
 Si no seteas la var, comportamiento legacy se mantiene (alerts → admins
 del yaml).
 
-## Reporte nocturno — dedupe + skip de días vacíos
+## Reporte nocturno — garantía Lun-Sab + dedupe
 
-`nightly_report.process_tenant_report` aplica 3 reglas antes de mandar:
+`nightly_report.process_tenant_report` aplica varias reglas:
 
 1. **Dedupe per-tenant por día** (`heartbeat_io.already_sent_today`). Si ya
-   se envió hoy para este slug, retorna `dup_skip`. Cubre el caso del cron
-   duplicado de la Pi (20:00 + 22:00).
-2. **Quiet skip en día vacío** (P1, 2026-05-18). Si `updated_items=0` y
-   `new_items=0` y el último envío fue hace < 7 días → `quiet_skip`. Evita
-   "Sin novedades hoy" diario al cliente B2B.
-3. **Dead-man semanal**. Si pasaron ≥ 7 días sin envío y el día está vacío,
-   manda un mensaje "Hace N días sin cambios, sistema OK". Confirma que el
-   pipeline sigue vivo.
-4. **Pre-write heartbeat** (P2, 2026-05-18). El heartbeat se escribe
-   **antes** de `send_telegram()` (optimistic lock). Reduce la ventana de
-   race inter-nodo de ~20s (LLM) a ~50ms (Telegram API). Trade-off
-   explícito: preferimos perder 1 envío fallido a tener envíos duplicados.
+   se envió hoy para este slug, retorna `dup_skip`. Cubre el cron duplicado
+   de la Pi (20:00 + 22:00).
+2. **Garantía Lun-Sab** (`_is_guaranteed_day`, default weekday 0..5).
+   Cada `active` tenant DEBE recibir 1 Telegram por día laboral:
+   - **Sin accum** (proveedor caído o `update_products` no corrió):
+     manda filler `supplier_down` — "Hoy el mayorista no respondió...".
+   - **Accum vacío** (sin cambios reales): manda filler `no_changes` —
+     "Hoy no hubo cambios en la lista, podés mantener precios actuales".
+   - **Accum con cambios**: flujo normal con LLM.
+3. **Domingo**: si accum vacío y último envío fue hace < 7 días →
+   `quiet_skip`. Si pasaron ≥ 7 días → dead-man semanal. Configurable via
+   env `GUARANTEED_WEEKDAYS=0,1,2,3,4,5,6` para incluir domingo.
+4. **Pre-write heartbeat** (P2). Heartbeat se escribe **antes** del
+   `send_telegram()` (optimistic lock). Reduce race inter-nodo de ~20s
+   (LLM) a ~50ms (Telegram API). Trade-off: perder 1 envío fallido vs
+   enviar duplicados.
 
-`_force_send: True` en el dict del tenant saltea los chequeos (usado por
-`scripts/e2e_telegram_simulate.py`).
+`_force_send: True` saltea todos los chequeos (`scripts/e2e_telegram_simulate.py`).
+
+**Backup cloud**:
+- `failover.yml` (10:00 + 22:00 UTC): chequea `hb.tenants.<slug>.last_telegram_iso`
+  per-tenant. Si algún tenant no recibió hoy → corre `nightly_report.py`.
+- `fallback_sync.yml` (23:30 UTC, ~20:30 AR): mismo chequeo per-tenant,
+  skip si Domingo. Confirma cobertura aunque la Pi esté offline.
 
 ## Tono del prompt — mayorista B2B
 

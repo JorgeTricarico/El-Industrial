@@ -31,6 +31,9 @@ def test_diagnose_ok_con_heartbeat_reciente(tmp_path, monkeypatch):
     iso = datetime.now().isoformat()
     write_heartbeat(tmp_path, iso)
     monkeypatch.setattr(healthcheck, "STATUS_DIR", str(tmp_path / "status"))
+    # Aislar de HTTP real al sitio publico (data del repo puede ser de ayer
+    # cuando el test corre, y detect_public_site_stale lo marca stale).
+    monkeypatch.setattr(healthcheck, "detect_public_site_stale", lambda: [])
     status, problems = healthcheck.diagnose()
     assert status == "ok"
     assert problems == []
@@ -86,6 +89,7 @@ def test_diagnose_ignora_eventos_sin_campo_api(tmp_path, monkeypatch):
         {"ts": iso, "api": "ok", "node": "test"},  # update_products log
     ])
     monkeypatch.setattr(healthcheck, "STATUS_DIR", str(tmp_path / "status"))
+    monkeypatch.setattr(healthcheck, "detect_public_site_stale", lambda: [])
     status, _ = healthcheck.diagnose()
     assert status == "ok"
 

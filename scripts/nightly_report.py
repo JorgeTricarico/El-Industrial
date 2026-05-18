@@ -451,12 +451,53 @@ def _archive_accum(accum_path, status_dir):
         log_metric("archive_prune_fail", f"{type(e).__name__}: {e}")
 
 
+# Lun=0, Mar=1, ..., Sab=5, Dom=6. Default: Lun-Sab garantizado.
+# Override via env GUARANTEED_WEEKDAYS="0,1,2,3,4,5,6" para incluir domingo.
+def _guaranteed_weekdays():
+    raw = os.getenv("GUARANTEED_WEEKDAYS", "0,1,2,3,4,5")
+    try:
+        return {int(x.strip()) for x in raw.split(",") if x.strip()}
+    except ValueError:
+        return {0, 1, 2, 3, 4, 5}
+
+
+def _is_guaranteed_day(now=None):
+    """True si hoy es un dia donde DEBE llegar 1 mensaje al cliente."""
+    now = now or datetime.now()
+    return now.weekday() in _guaranteed_weekdays()
+
+
+def _filler_body(reason, days_since=None):
+    """Mensajes 'sistema OK' que respetan el tono mayorista B2B sin alarmismo."""
+    if reason == "no_changes":
+        return (
+            "Hoy no hubo cambios en la lista del mayorista. "
+            "Sistema OK, podes mantener los precios actuales en cotizaciones abiertas."
+        )
+    if reason == "supplier_down":
+        return (
+            "Hoy el mayorista no respondio o no actualizo la lista. "
+            "Sistema OK, los precios que tenes vigentes siguen siendo los ultimos conocidos."
+        )
+    if reason == "weekly_deadman":
+        days_str = str(days_since) if days_since is not None else "varios"
+        return (
+            f"Hace {days_str} dias que no hay cambios en la lista del mayorista. "
+            "Sistema funcionando, te aviso por las dudas.\n"
+            "<i>(Si lo vieras varios dias seguidos, avisame.)</i>"
+        )
+    return "Sistema OK."
+
+
 def process_tenant_report(tenant):
     """Genera y envia el reporte nocturno de UN tenant.
 
     Lee tenants/<slug>/status/daily_accum.json. Manda a destinatarios
-    role=admin+client del tenants/<slug>/config/clients.yml. Si el tenant
-    no tiene accum, retorna early sin error (es valido: dia sin cambios).
+    role=admin+client del tenants/<slug>/config/clients.yml.
+
+    Garantia Lun-Sab: si es dia laboral y no hay accum o no hubo cambios,
+    igual manda un 'Sistema OK' corto. Domingo: quiet_skip salvo dead-man
+    semanal (7 dias sin envio).
 
     Retorna dict con info: {slug, status, items, provider, sent}.
     """
@@ -487,15 +528,31 @@ def process_tenant_report(tenant):
 
     tenant_status_dir = os.path.join(TENANTS_DIR, slug, "status")
     accum_path = os.path.join(tenant_status_dir, "daily_accum.json")
-    if not os.path.exists(accum_path):
-        log_metric("nightly_skip", f"{slug}: sin daily_accum.json")
-        result["status"] = "no_accum"
-        return result
+    guaranteed = _is_guaranteed_day()
 
-    with open(accum_path, "r", encoding="utf-8") as f:
-        accum_data = json.load(f)
-    updated_items = list(accum_data.get("updated", {}).values())
-    new_items = list(accum_data.get("new", {}).values())
+    if not os.path.exists(accum_path):
+        # Sin accum: el proveedor no respondio o update_products no corrio.
+        if guaranteed and not force:
+            log_metric("nightly_filler", f"{slug}: no_accum en dia garantizado -> filler")
+            updated_items = []
+            new_items = []
+            accum_data = {"updated": {}, "new": {}}
+            no_accum_filler = True
+        elif force:
+            updated_items = []
+            new_items = []
+            accum_data = {"updated": {}, "new": {}}
+            no_accum_filler = True
+        else:
+            log_metric("nightly_skip", f"{slug}: sin daily_accum.json (dia no garantizado)")
+            result["status"] = "no_accum"
+            return result
+    else:
+        with open(accum_path, "r", encoding="utf-8") as f:
+            accum_data = json.load(f)
+        updated_items = list(accum_data.get("updated", {}).values())
+        new_items = list(accum_data.get("new", {}).values())
+        no_accum_filler = False
 
     top_brands, top_hikes = _compute_stats(updated_items)
     now = datetime.now()
@@ -505,28 +562,32 @@ def process_tenant_report(tenant):
     body = None
     provider = None
 
-    if len(updated_items) == 0 and len(new_items) == 0:
-        # Dia totalmente vacio. P1: skip salvo dead-man semanal.
-        try:
-            import sys as _sys
-            _sys.path.insert(0, SCRIPT_DIR)
-            import heartbeat_io
-            days = heartbeat_io.days_since_last_telegram(STATUS_DIR, slug)
-        except Exception:
-            days = None
-        if not force and days is not None and days < 7:
-            log_metric("nightly_quiet_skip", f"{slug}: dia vacio, ultimo envio hace {days}d")
-            result["status"] = "quiet_skip"
-            _archive_accum(accum_path, tenant_status_dir)
-            return result
-        # >= 7 dias o nunca envio: dead-man semanal con tono especial.
-        days_str = str(days) if days is not None else "varios"
-        body = (
-            f"Hace {days_str} dias que no hay cambios en la lista del mayorista. "
-            f"Sistema funcionando, te aviso por las dudas.\n"
-            f"<i>(Si lo vieras varios dias seguidos, avisame.)</i>"
-        )
-        provider = "deadman"
+    if no_accum_filler:
+        # No hay accum AND es dia garantizado (o force): mensaje supplier_down.
+        body = _filler_body("supplier_down")
+        provider = "filler_supplier_down"
+    elif len(updated_items) == 0 and len(new_items) == 0:
+        # Dia totalmente vacio.
+        if guaranteed or force:
+            # Lun-Sab: SIEMPRE envia algo (garantia).
+            body = _filler_body("no_changes")
+            provider = "filler_no_changes"
+        else:
+            # Domingo: skip salvo dead-man semanal.
+            try:
+                import sys as _sys
+                _sys.path.insert(0, SCRIPT_DIR)
+                import heartbeat_io
+                days = heartbeat_io.days_since_last_telegram(STATUS_DIR, slug)
+            except Exception:
+                days = None
+            if days is not None and days < 7:
+                log_metric("nightly_quiet_skip", f"{slug}: domingo vacio, ultimo envio hace {days}d")
+                result["status"] = "quiet_skip"
+                _archive_accum(accum_path, tenant_status_dir)
+                return result
+            body = _filler_body("weekly_deadman", days_since=days)
+            provider = "deadman"
     elif len(updated_items) == 0:
         # solo productos nuevos (sin cambios de precio)
         body = f"Entraron {len(new_items)} producto(s) nuevo(s) a la lista. Sin cambios de precios."
@@ -567,7 +628,8 @@ def process_tenant_report(tenant):
     _update_telegram_heartbeat(provider, STATUS_DIR, slug=slug)
     sent = send_telegram(full_report, clients_path=clients_yml)
     log_metric("nightly_done", f"{slug} provider={provider} sent={sent} items={len(updated_items)}")
-    _archive_accum(accum_path, tenant_status_dir)
+    if not no_accum_filler and os.path.exists(accum_path):
+        _archive_accum(accum_path, tenant_status_dir)
 
     result.update(status="ok", items=len(updated_items), provider=provider, sent=sent)
     return result

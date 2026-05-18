@@ -281,11 +281,29 @@ def test_process_tenant_report_skips_inactive(mock_ai, mock_send, tmp_path, monk
 
 @patch('nightly_report.send_telegram')
 @patch('nightly_report.get_ai_analysis')
-def test_process_tenant_report_skips_no_accum(mock_ai, mock_send, tmp_path, monkeypatch):
+def test_process_tenant_report_no_accum_on_domingo_skips(mock_ai, mock_send, tmp_path, monkeypatch):
+    """Domingo + sin accum -> no enviar. Lun-Sab garantiza filler (otro test)."""
     monkeypatch.setattr(nightly_report, "TENANTS_DIR", str(tmp_path / "tenants"))
+    monkeypatch.setattr(nightly_report, "_is_guaranteed_day", lambda *a, **kw: False)
     res = nightly_report.process_tenant_report({"slug": "alpha", "state": "active"})
     assert res["status"] == "no_accum"
     assert not mock_send.called
+
+
+@patch('nightly_report.send_telegram', return_value=True)
+def test_process_tenant_report_no_accum_on_workday_sends_filler(mock_send, tmp_path, monkeypatch):
+    """Lun-Sab + sin accum -> manda filler 'supplier_down'."""
+    tenants_dir = tmp_path / "tenants"
+    (tenants_dir / "alpha").mkdir(parents=True)
+    monkeypatch.setattr(nightly_report, "TENANTS_DIR", str(tenants_dir))
+    monkeypatch.setattr(nightly_report, "STATUS_DIR", str(tmp_path / "status"))
+    monkeypatch.setattr(nightly_report, "_is_guaranteed_day", lambda *a, **kw: True)
+    res = nightly_report.process_tenant_report({"slug": "alpha", "state": "active"})
+    assert res["status"] == "ok"
+    assert res["provider"] == "filler_supplier_down"
+    assert mock_send.called
+    body = mock_send.call_args[0][0]
+    assert "no respondio" in body.lower() or "no actualizo" in body.lower()
 
 
 @patch('nightly_report.send_telegram', return_value=True)
@@ -439,8 +457,8 @@ def test_quiet_skip_when_recent_send_and_zero_items(tmp_path, monkeypatch):
     # Probemos con envio de ayer:
 
 
-def test_quiet_skip_with_yesterday_send(tmp_path, monkeypatch):
-    """Envio de ayer + dia vacio -> quiet_skip (no es duplicado del dia)."""
+def test_quiet_skip_on_sunday_with_yesterday_send(tmp_path, monkeypatch):
+    """Domingo + envio de ayer + dia vacio -> quiet_skip."""
     import heartbeat_io
     yesterday = (datetime.now() - timedelta(days=1)).isoformat()
     heartbeat_io.update_telegram(str(tmp_path), "gemini", yesterday, slug="t1")
@@ -451,13 +469,32 @@ def test_quiet_skip_with_yesterday_send(tmp_path, monkeypatch):
 
     monkeypatch.setattr(nightly_report, "STATUS_DIR", str(tmp_path))
     monkeypatch.setattr(nightly_report, "TENANTS_DIR", str(tmp_path / "tenants"))
+    monkeypatch.setattr(nightly_report, "_is_guaranteed_day", lambda *a, **kw: False)
     res = nightly_report.process_tenant_report({"slug": "t1", "state": "active"})
     assert res["status"] == "quiet_skip"
     assert res["sent"] is False
 
 
-def test_deadman_when_no_send_in_7_days(tmp_path, monkeypatch):
-    """Sin envio en 7+ dias + dia vacio -> manda mensaje deadman."""
+@patch('nightly_report.send_telegram', return_value=True)
+def test_workday_empty_accum_sends_filler(mock_send, tmp_path, monkeypatch):
+    """Lun-Sab + accum vacio -> SIEMPRE manda filler 'no_changes'."""
+    tenant_dir = tmp_path / "tenants" / "t1" / "status"
+    tenant_dir.mkdir(parents=True)
+    (tenant_dir / "daily_accum.json").write_text('{"updated":{}, "new":{}}')
+
+    monkeypatch.setattr(nightly_report, "STATUS_DIR", str(tmp_path))
+    monkeypatch.setattr(nightly_report, "TENANTS_DIR", str(tmp_path / "tenants"))
+    monkeypatch.setattr(nightly_report, "_is_guaranteed_day", lambda *a, **kw: True)
+    res = nightly_report.process_tenant_report({"slug": "t1", "state": "active"})
+    assert res["status"] == "ok"
+    assert res["provider"] == "filler_no_changes"
+    assert mock_send.called
+    body = mock_send.call_args[0][0]
+    assert "sin cambios" in body.lower() or "no hubo cambios" in body.lower()
+
+
+def test_deadman_when_no_send_in_7_days_on_sunday(tmp_path, monkeypatch):
+    """Domingo + sin envio en 7+ dias + dia vacio -> manda mensaje deadman."""
     import heartbeat_io
     old = (datetime.now() - timedelta(days=10)).isoformat()
     heartbeat_io.update_telegram(str(tmp_path), "gemini", old, slug="t1")
@@ -469,6 +506,7 @@ def test_deadman_when_no_send_in_7_days(tmp_path, monkeypatch):
     cfg_dir = tmp_path / "tenants" / "t1" / "config"
     cfg_dir.mkdir(parents=True)
     (cfg_dir / "clients.yml").write_text("clients: []")
+    monkeypatch.setattr(nightly_report, "_is_guaranteed_day", lambda *a, **kw: False)
 
     monkeypatch.setattr(nightly_report, "STATUS_DIR", str(tmp_path))
     monkeypatch.setattr(nightly_report, "TENANTS_DIR", str(tmp_path / "tenants"))

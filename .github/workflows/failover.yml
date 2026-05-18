@@ -44,42 +44,71 @@ jobs:
           set -e
           FILE_DATE=$(date +%y-%m-%d)
           TODAY_TAG="[run:$FILE_DATE]"
+          TODAY_AR=$(date +%Y-%m-%d)
+          # weekday: 1=Lun..7=Dom. Lun-Sab => 1..6
+          WEEKDAY=$(date +%u)
 
-          # Dedup unificado: si algun nodo ya marco el commit de hoy, salir
-          if git log origin/main --format=%s -5 | grep -qF "$TODAY_TAG"; then
-            echo "Otro nodo ya ejecuto hoy ($TODAY_TAG). Watchdog en espera."
+          # Determinar tenants pendientes de Telegram para HOY
+          # Iteramos hb.tenants.<slug>.last_telegram_iso. Si no es de hoy: pendiente.
+          PENDING=()
+          if [ -f tenants/_registry.yml ]; then
+            ACTIVE_SLUGS=$(python3 -c "
+          import yaml,sys
+          d=yaml.safe_load(open('tenants/_registry.yml'))
+          for t in d.get('tenants',[]):
+              if t.get('state')=='active': print(t['slug'])
+          ")
+            for slug in $ACTIVE_SLUGS; do
+              if [ -f status/heartbeat.json ]; then
+                LAST_TG=$(jq -r ".tenants.\"$slug\".last_telegram_iso // \"\"" status/heartbeat.json)
+                LAST_TG_DAY=$(echo "$LAST_TG" | cut -c1-10)
+              else
+                LAST_TG_DAY=""
+              fi
+              if [ "$LAST_TG_DAY" != "$TODAY_AR" ]; then
+                PENDING+=("$slug")
+              fi
+            done
+          fi
+
+          if [ ${#PENDING[@]} -eq 0 ]; then
+            echo "Todos los tenants ya recibieron Telegram hoy. Watchdog en espera."
             exit 0
           fi
 
-          # Calculo de antiguedad del heartbeat (en horas)
-          if [ -f status/heartbeat.json ]; then
-            LAST_RUN=$(jq -r '.last_run' status/heartbeat.json)
-            LAST_TS=$(date -d "$LAST_RUN" +%s)
-            NOW_TS=$(date +%s)
-            DIFF=$(( (NOW_TS - LAST_TS) / 3600 ))
-          else
-            DIFF=999
-          fi
-          echo "Ultima corrida hace $DIFF horas."
+          echo "Tenants pendientes hoy: ${PENDING[*]}"
 
-          if [ $DIFF -ge 24 ]; then
-            echo "Nodos locales offline >24h. Activando failover (sin fetch, solo aviso)."
-            # NOTA: NO se llama update_products.py (Bertual API timeout desde GH runners).
-            # Solo avisamos al cliente y mandamos reporte con datos previos si los hay.
-            python3 scripts/notify_pi_offline.py || true
-            python3 scripts/nightly_report.py || true
-
-            git config --global user.name "GitHub Action Watchdog"
-            git config --global user.email "actions@github.com"
-            if [[ -n $(git status -s) ]]; then
-              git add .
-              git commit -m "chore: watchdog aviso Pi offline [GH-Actions] $TODAY_TAG [skip ci]"
-              git push origin main
+          # Si es Domingo Y NO pasaron > 24h sin run -> esperar (Pi cron normal cubre).
+          if [ "$WEEKDAY" = "7" ]; then
+            if [ -f status/heartbeat.json ]; then
+              MAX_AGE_H=$(jq -r '
+                [.nodes // {} | to_entries[] | .value.last_run]
+                | map(. // empty)
+                | if length==0 then 999
+                  else map(now - (fromdateiso8601 // 0)) | min / 3600 | floor
+                  end' status/heartbeat.json)
             else
-              echo "Sin cambios para commitear."
+              MAX_AGE_H=999
             fi
+            if [ "$MAX_AGE_H" -lt 24 ]; then
+              echo "Domingo y nodos vivos (< 24h). Skip."
+              exit 0
+            fi
+          fi
+
+          echo "Activando failover (sin fetch a Bertual, manda filler)."
+          python3 scripts/notify_pi_offline.py || true
+          python3 scripts/nightly_report.py || true
+
+          git config --global user.name "GitHub Action Watchdog"
+          git config --global user.email "actions@github.com"
+          # Whitelist: solo heartbeat (commit chico). Otros archivos los manejan los nodos locales.
+          git add status/heartbeat.json 2>/dev/null || true
+          if ! git diff --cached --quiet; then
+            git commit -m "chore: watchdog failover envio [GH-Actions] $TODAY_TAG [skip ci]"
+            git push origin main
           else
-            echo "Nodos locales funcionando. Watchdog en espera."
+            echo "Sin cambios en heartbeat para commitear."
           fi
 
       - name: Healthcheck (alerta si algo huele mal)
