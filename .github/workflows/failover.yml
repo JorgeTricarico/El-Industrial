@@ -80,16 +80,27 @@ jobs:
 
           # Si es Domingo Y NO pasaron > 24h sin run -> esperar (Pi cron normal cubre).
           if [ "$WEEKDAY" = "7" ]; then
-            if [ -f status/heartbeat.json ]; then
-              MAX_AGE_H=$(jq -r '
-                [.nodes // {} | to_entries[] | .value.last_run]
-                | map(. // empty)
-                | if length==0 then 999
-                  else map(now - (fromdateiso8601 // 0)) | min / 3600 | floor
-                  end' status/heartbeat.json)
-            else
-              MAX_AGE_H=999
-            fi
+            MAX_AGE_H=$(python3 -c "
+          import json, datetime
+          try:
+              hb = json.load(open('status/heartbeat.json'))
+          except Exception:
+              print(999); raise SystemExit
+          nodes = hb.get('nodes', {})
+          if not nodes:
+              print(999); raise SystemExit
+          now = datetime.datetime.now()
+          ages = []
+          for n in nodes.values():
+              lr = n.get('last_run')
+              if not lr: continue
+              try:
+                  dt = datetime.datetime.fromisoformat(lr.replace('Z',''))
+                  ages.append((now - dt).total_seconds() / 3600)
+              except Exception:
+                  continue
+          print(int(min(ages)) if ages else 999)
+          ")
             if [ "$MAX_AGE_H" -lt 24 ]; then
               echo "Domingo y nodos vivos (< 24h). Skip."
               exit 0
