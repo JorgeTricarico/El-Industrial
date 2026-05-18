@@ -418,15 +418,37 @@ def _update_telegram_heartbeat(provider, status_dir, slug=None):
 
 
 def _archive_accum(accum_path, status_dir):
-    """Mueve accum a status_dir/archive/ con timestamp."""
+    """Mueve accum a status_dir/archive/ con timestamp.
+
+    Fail-safe: si rename falla (cross-fs, permisos), intenta copy+unlink.
+    Si todo falla, loguea pero NO propaga: el archive es housekeeping,
+    perderlo no debe romper el envio.
+    """
     archive_dir = os.path.join(status_dir, "archive")
-    os.makedirs(archive_dir, exist_ok=True)
-    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
     try:
-        os.rename(accum_path, os.path.join(archive_dir, f"accum_{ts}.json"))
+        os.makedirs(archive_dir, exist_ok=True)
     except OSError as e:
-        log_metric("archive_fail", f"{type(e).__name__}: {e}")
-    prune_old_archives(archive_dir, days=90)
+        log_metric("archive_fail", f"mkdir: {type(e).__name__}: {e}")
+        return
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    dest = os.path.join(archive_dir, f"accum_{ts}.json")
+    try:
+        os.rename(accum_path, dest)
+    except OSError as e:
+        log_metric("archive_fail", f"rename: {type(e).__name__}: {e}")
+        # Plan B: copy + unlink (cross-fs case)
+        try:
+            import shutil
+            shutil.copy2(accum_path, dest)
+            os.remove(accum_path)
+            log_metric("archive_recovered", f"via copy+unlink {dest}")
+        except OSError as e2:
+            log_metric("archive_fail", f"copy_fallback: {type(e2).__name__}: {e2}")
+            return  # No prune si no pudimos archivar
+    try:
+        prune_old_archives(archive_dir, days=90)
+    except Exception as e:
+        log_metric("archive_prune_fail", f"{type(e).__name__}: {e}")
 
 
 def process_tenant_report(tenant):
@@ -473,14 +495,41 @@ def process_tenant_report(tenant):
     with open(accum_path, "r", encoding="utf-8") as f:
         accum_data = json.load(f)
     updated_items = list(accum_data.get("updated", {}).values())
+    new_items = list(accum_data.get("new", {}).values())
 
     top_brands, top_hikes = _compute_stats(updated_items)
     now = datetime.now()
     fecha = now.strftime("%d/%m/%Y")
     hora = now.strftime("%H:%M")
 
-    if len(updated_items) == 0:
-        body = "Sin novedades hoy. No se detectaron cambios de precios ni productos nuevos."
+    body = None
+    provider = None
+
+    if len(updated_items) == 0 and len(new_items) == 0:
+        # Dia totalmente vacio. P1: skip salvo dead-man semanal.
+        try:
+            import sys as _sys
+            _sys.path.insert(0, SCRIPT_DIR)
+            import heartbeat_io
+            days = heartbeat_io.days_since_last_telegram(STATUS_DIR, slug)
+        except Exception:
+            days = None
+        if not force and days is not None and days < 7:
+            log_metric("nightly_quiet_skip", f"{slug}: dia vacio, ultimo envio hace {days}d")
+            result["status"] = "quiet_skip"
+            _archive_accum(accum_path, tenant_status_dir)
+            return result
+        # >= 7 dias o nunca envio: dead-man semanal con tono especial.
+        days_str = str(days) if days is not None else "varios"
+        body = (
+            f"Hace {days_str} dias que no hay cambios en la lista del mayorista. "
+            f"Sistema funcionando, te aviso por las dudas.\n"
+            f"<i>(Si lo vieras varios dias seguidos, avisame.)</i>"
+        )
+        provider = "deadman"
+    elif len(updated_items) == 0:
+        # solo productos nuevos (sin cambios de precio)
+        body = f"Entraron {len(new_items)} producto(s) nuevo(s) a la lista. Sin cambios de precios."
         provider = "none"
     else:
         magnitude = classify_magnitude(top_hikes)
@@ -507,11 +556,17 @@ def process_tenant_report(tenant):
         full_report = full_report[:3870] + "\n\n<i>(mensaje recortado)</i>"
 
     clients_yml = os.path.join(TENANTS_DIR, slug, "config", "clients.yml")
+
+    # P2: optimistic lock para evitar race inter-nodo.
+    # Marcamos en heartbeat ANTES de enviar. Si dos nodos corren a la vez,
+    # el que pierde la carrera de escritura del heartbeat aun puede enviar
+    # (no hay file-locking real), pero la ventana se reduce de ~20s (LLM) a
+    # ~50ms (Telegram API). Trade-off explicito: preferimos perder 1 envio
+    # ante fallo de send_telegram a tener 2 envios duplicados. El
+    # healthcheck.dead_man_switch detecta el caso "no llego" en < 26h.
+    _update_telegram_heartbeat(provider, STATUS_DIR, slug=slug)
     sent = send_telegram(full_report, clients_path=clients_yml)
     log_metric("nightly_done", f"{slug} provider={provider} sent={sent} items={len(updated_items)}")
-
-    if sent:
-        _update_telegram_heartbeat(provider, STATUS_DIR, slug=slug)
     _archive_accum(accum_path, tenant_status_dir)
 
     result.update(status="ok", items=len(updated_items), provider=provider, sent=sent)

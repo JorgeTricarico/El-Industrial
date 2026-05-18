@@ -171,6 +171,43 @@ Why: cuando se sumen clientes pagos, no comparten chat con el dev/ops.
 Si no seteas la var, comportamiento legacy se mantiene (alerts → admins
 del yaml).
 
+## Reporte nocturno — dedupe + skip de días vacíos
+
+`nightly_report.process_tenant_report` aplica 3 reglas antes de mandar:
+
+1. **Dedupe per-tenant por día** (`heartbeat_io.already_sent_today`). Si ya
+   se envió hoy para este slug, retorna `dup_skip`. Cubre el caso del cron
+   duplicado de la Pi (20:00 + 22:00).
+2. **Quiet skip en día vacío** (P1, 2026-05-18). Si `updated_items=0` y
+   `new_items=0` y el último envío fue hace < 7 días → `quiet_skip`. Evita
+   "Sin novedades hoy" diario al cliente B2B.
+3. **Dead-man semanal**. Si pasaron ≥ 7 días sin envío y el día está vacío,
+   manda un mensaje "Hace N días sin cambios, sistema OK". Confirma que el
+   pipeline sigue vivo.
+4. **Pre-write heartbeat** (P2, 2026-05-18). El heartbeat se escribe
+   **antes** de `send_telegram()` (optimistic lock). Reduce la ventana de
+   race inter-nodo de ~20s (LLM) a ~50ms (Telegram API). Trade-off
+   explícito: preferimos perder 1 envío fallido a tener envíos duplicados.
+
+`_force_send: True` en el dict del tenant saltea los chequeos (usado por
+`scripts/e2e_telegram_simulate.py`).
+
+## Tono del prompt — mayorista B2B
+
+El lector NO es retail. Es un **mayorista chico de electricidad y
+ferretería** que compra a mayoristas grandes (Bertual) y vende a
+ferreterías, electricistas, arquitectos y constructores. El prompt
+(`build_prompt`) usa esa persona explícita. Permitido: `cotización`,
+`lista`, `rubro`, `facturar`. Prohibido: jerga consultora (`estratégico`,
+`recalibrar`, `panorama`) y alarmista (`crítico`, `histórico`, `masivo`).
+
+`classify_magnitude` clasifica el día en `negligible / minor / moderate /
+strong` según promedio y máximo de %. Cada clase tiene su instrucción
+explícita al LLM: en `negligible` (cambios infimos, redondeo) prohíbe
+recomendar acción. En `strong` recomienda repasar cotizaciones abiertas.
+`render_template_fallback` (cuando los 3 LLMs caen) respeta la misma
+lógica.
+
 ## Heartbeat multi-nodo
 
 `status/heartbeat.json` ahora es `{"nodes": {<node_name>: {...}},

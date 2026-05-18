@@ -123,19 +123,15 @@
 
 ### M5 — E2E que valida entrega de Telegram (no solo HTTP del sitio)
 
-- **status**: pending
-- **prioridad**: ALTA (sería el detector del próximo bug "19 días" para Telegram)
-- **estimado**: 1-2h
+- **status**: parcial
+- **done**: 2026-05-17 (script ad-hoc), pendiente workflow GH Actions
+- **prioridad**: ALTA
 
-**Problema**: `e2e_post_deploy.yml` valida que `el-industrial.netlify.app` responde HTTP 200 con data fresca. Pero ningún check valida que el reporte Telegram nocturno **realmente se entregó**. Si Telegram bloquea al bot, si el token se revoca, si los chat_ids cambian, lo descubrimos cuando el cliente nos pregunta.
+**Hecho (2026-05-17)**:
+- `scripts/e2e_telegram_simulate.py`: inyecta accum sintetico con producto real (canary), corre `nightly_report.process_tenant_report`, valida sent=True + heartbeat avanzo + `.gz` intacto (sha256) + no rastros. Usado a mano en la Pi.
 
-**Scope**:
-- `nightly_report` ya escribe `heartbeat.last_telegram_iso` cuando manda. Sumar workflow `.github/workflows/telegram_delivery_check.yml` (corre 1x/día 11:00 AR), que lee `status/heartbeat.json` del repo y verifica que `last_telegram_iso` está dentro de las últimas 26h. Si no: Telegram al admin.
-- O variante: `healthcheck` ya tiene `dead_man_switch` lógica. Asegurar que dispara también cuando hay TELEGRAM token pero ningún envío exitoso.
-
-**Acceptance**:
-- Workflow nuevo (o extensión del existente) verde en CI.
-- Test que simule `last_telegram_iso` viejo → debe disparar alerta.
+**Pendiente**:
+- Workflow `.github/workflows/telegram_delivery_check.yml` (1x/día 11:00 AR) que lea `status/heartbeat.json` y alerte si `tenants.<slug>.last_telegram_iso` esta vencido (> 26h).
 - Documentar en CLAUDE.md.
 
 ---
@@ -248,6 +244,152 @@
 - Simular run completo (`update_products → sync_tenants → nightly_report`) con N tenants mockeados.
 - Medir que termina en <5min para no solapar con próximo cron.
 - Detectar bottlenecks (HTTP secuencial vs paralelo).
+
+---
+
+---
+
+## Pendientes detectados en revisión 2026-05-18
+
+### P1 — Skip items=0 + dead-man semanal
+
+- **status**: pending
+- **prioridad**: ALTA (ruido diario al cliente)
+- **estimado**: 15min
+
+**Problema**: Días sin cambios reales igual mandan "Sin novedades hoy. No se detectaron cambios..." El cliente B2B no necesita un mensaje cada día — quiere saber cuando algo se mueve. Pero tampoco queremos perder el dead-man-switch (si pasan 7 días sin mensaje, algo está roto).
+
+**Scope**:
+- Si `len(updated_items) == 0` AND el heartbeat tiene `tenants.<slug>.last_telegram_iso` en los últimos 7 días → no enviar. Log `nightly_quiet_skip`.
+- Si pasan ≥ 7 días sin envío → mandar mensaje "Sistema OK, sin novedades esta semana" (dead-man visible).
+
+**Acceptance**:
+- Test: 6 días seguidos con items=0 → 0 mensajes. Día 7 → 1 mensaje semanal.
+- Test: items=0 con `last_telegram_iso` de hace 1 día → no envía.
+
+---
+
+### P2 — Pre-write heartbeat antes del send (race inter-nodo)
+
+- **status**: pending
+- **prioridad**: MEDIA (raro pero posible)
+- **estimado**: 15min
+
+**Problema**: Si Pi y Mint corren `nightly_report` en la misma ventana, ambos leen heartbeat antes del push del otro → ambos envían. El dedupe per-día funciona intra-nodo, no entre nodos en la misma ventana de ~20s (tiempo del LLM).
+
+**Scope**:
+- En `process_tenant_report`, escribir `heartbeat.tenants.<slug>.last_telegram_iso` **antes** del `send_telegram()` (optimistic lock). Si `send_telegram` falla, dejarlo así igual: el `healthcheck.dead_man_switch` verifica que efectivamente llegue.
+- Documentar el trade-off: preferimos perder 1 envío fallido a tener envíos duplicados.
+
+**Acceptance**:
+- Tests: si `send_telegram` retorna False, heartbeat queda actualizado (acepta el trade-off).
+- Tests: 2 procesos simulados que pullean al mismo tiempo → solo 1 envía (segundo ve heartbeat actualizado).
+
+---
+
+### P3 — `_archive_accum` fail-safe
+
+- **status**: pending
+- **prioridad**: MEDIA
+- **estimado**: 5min
+
+**Problema**: Si `os.rename` falla (disco lleno, permisos, etc.), la excepción no está atrapada en el flujo principal. El accum no se archiva, mañana procesa los mismos cambios + los nuevos → mensaje inflado.
+
+**Scope**:
+- Wrap el `os.rename` con try/except, log `archive_fail` (ya existe), no propagar.
+- Alternativa: si el rename falla, intentar copy + delete.
+
+**Acceptance**:
+- Test: monkeypatch `os.rename` para que lance OSError → `process_tenant_report` retorna OK igual, accum sigue ahí pero el envío fue exitoso.
+
+---
+
+### P5 — Hora real del proveedor en el header
+
+- **status**: pending
+- **prioridad**: BAJA
+- **estimado**: 30min
+
+**Problema**: Header dice "Lista del día — 18/05/2026 22:00". El lector no sabe si esa data es de cuando Bertual la generó (puede ser 6 horas atrás) o cuando nosotros la procesamos.
+
+**Scope**: Si el supplier expone fecha de actualización, propagarla a un campo `supplier_updated_at` en el accum, y mostrarla en el header: "Lista del día — Bertual actualizó a las 18:42".
+
+---
+
+### P6 — Sacar `nightly_report` del cron de las 22:00
+
+- **status**: blocked (requiere OK del user para tocar crontab Pi)
+- **prioridad**: BAJA
+- **estimado**: 5min
+
+**Problema**: Cron corre `run_daily.sh` a las 20:00 y a las 22:00. Las 22:00 sirve como retry/refresh de `update_products` pero también dispara `nightly_report` que ya hizo dedup → quema ~20s de LLM al pedo.
+
+**Scope**: Variable de entorno o flag en `run_daily.sh` para que la 2da corrida del día solo haga `update_products`, no `nightly_report`. O 2 scripts separados.
+
+---
+
+### P7 — Robustez del `git add` whitelist
+
+- **status**: pending
+- **prioridad**: BAJA
+- **estimado**: 10min
+
+**Problema**: El whitelist en `run_daily.sh` (post-incidente del .env.backup) cubre los paths actuales. Si un script nuevo escribe algo legitimo fuera del whitelist, no se commitea. Sin alerta.
+
+**Scope**: Tras el `git add` y antes del `git commit`, log las paths staged. Si `git status` muestra archivos modificados que NO están en el staging area, log warning.
+
+---
+
+### P8 — Cleanup de residuos del repo (M7 expandido)
+
+- **status**: pending
+- **prioridad**: BAJA
+
+**Items**:
+- `*.zip` en la raíz (11 archivos).
+- `script.js.old`, `screenshot_audit.js`.
+- `playwright.config.cjs` vs `playwright.config.js` (decidir cuál).
+- `scripts/test_ai_direct.py`, `scripts/test_endpoints.py`, `scripts/inspect_api_fields.py`, `scripts/list_models.py` → `scripts/debug/`.
+- `audit_final.png`, `t.png`, `wpp.png` → `docs/` o borrar.
+- `tests/e2e/frontend_audit.html` + `tests/e2e/screenshots/` → revisar si son útiles.
+
+---
+
+### P9 — Tests de border en `classify_magnitude`
+
+- **status**: pending
+- **prioridad**: BAJA
+- **estimado**: 10min
+
+**Scope**: Tests con avg=0.99% (debería ser negligible) vs 1.00% (debería ser minor); avg=2.99% vs 3.00% (minor → moderate). Mismo con max_pct.
+
+---
+
+### P10 — `e2e_telegram_simulate` con --tenant configurable mejor
+
+- **status**: pending
+- **prioridad**: BAJA
+
+**Scope**: Default no hardcoded a `demo-electricidad`: tomar el primer tenant con `state=testing` del registry, o fallback al primero. Si no hay testing, requerir flag explícito.
+
+---
+
+### P11 — Reportar `.env.backup-...` a GitHub Support
+
+- **status**: blocked (sólo lo puede hacer el user; gh cli no tiene endpoint)
+- **prioridad**: ALTA (commit dangling con credenciales sigue accesible por SHA)
+
+**Acción**: Form en https://support.github.com/contact/private-information con SHA `9f494ab` y file `.env.backup-20260517_112159` → GC en horas. El usuario decidió no rotar credenciales (free tier), así que esto reduce el blast radius.
+
+---
+
+### P12 — `STATUS_DIR` parametrizable en log_metric
+
+- **status**: pending
+- **prioridad**: BAJA
+- **estimado**: 15min
+
+**Problema**: `log_metric` en `nightly_report` usa `STATUS_DIR` global del módulo. Tests funcionan por monkeypatch via `conftest`. Pero si un consumer pasa `clients_path=<tenant>` y querría `log_metric` per-tenant, no puede.
 
 ---
 

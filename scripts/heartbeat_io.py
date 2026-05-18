@@ -115,6 +115,20 @@ def already_sent_today(status_dir, slug, today_str):
     return iso[:10] == today_str
 
 
+def days_since_last_telegram(status_dir, slug, now=None):
+    """Dias desde el ultimo envio para este tenant. None si nunca envio."""
+    from datetime import datetime as _dt
+    iso = tenant_last_telegram(status_dir, slug)
+    if not iso:
+        return None
+    try:
+        when = _dt.fromisoformat(iso)
+    except ValueError:
+        return None
+    now = now or _dt.now()
+    return (now - when).days
+
+
 def iter_nodes(status_dir):
     """Yield (node_name, entry) por cada nodo en el heartbeat."""
     hb = read(status_dir)

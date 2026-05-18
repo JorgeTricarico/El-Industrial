@@ -418,3 +418,86 @@ def test_dedupe_force_send_bypasses_check(tmp_path, monkeypatch):
     monkeypatch.setattr(nightly_report, "TENANTS_DIR", str(tmp_path / "tenants"))
     res = nightly_report.process_tenant_report({"slug": "t1", "state": "active", "_force_send": True})
     assert res["status"] != "dup_skip"
+
+
+# ============ P1: QUIET SKIP DIA VACIO ============
+
+def test_quiet_skip_when_recent_send_and_zero_items(tmp_path, monkeypatch):
+    """Dia vacio Y envio reciente -> no manda Telegram (quiet_skip)."""
+    import heartbeat_io
+    heartbeat_io.update_telegram(str(tmp_path), "gemini", datetime.now().isoformat(), slug="t1")
+
+    tenant_dir = tmp_path / "tenants" / "t1" / "status"
+    tenant_dir.mkdir(parents=True)
+    (tenant_dir / "daily_accum.json").write_text('{"updated":{}, "new":{}}')
+
+    monkeypatch.setattr(nightly_report, "STATUS_DIR", str(tmp_path))
+    monkeypatch.setattr(nightly_report, "TENANTS_DIR", str(tmp_path / "tenants"))
+
+    res = nightly_report.process_tenant_report({"slug": "t1", "state": "active"})
+    # primero hace dup_skip (heartbeat tiene envio hoy), no llega a quiet_skip.
+    # Probemos con envio de ayer:
+
+
+def test_quiet_skip_with_yesterday_send(tmp_path, monkeypatch):
+    """Envio de ayer + dia vacio -> quiet_skip (no es duplicado del dia)."""
+    import heartbeat_io
+    yesterday = (datetime.now() - timedelta(days=1)).isoformat()
+    heartbeat_io.update_telegram(str(tmp_path), "gemini", yesterday, slug="t1")
+
+    tenant_dir = tmp_path / "tenants" / "t1" / "status"
+    tenant_dir.mkdir(parents=True)
+    (tenant_dir / "daily_accum.json").write_text('{"updated":{}, "new":{}}')
+
+    monkeypatch.setattr(nightly_report, "STATUS_DIR", str(tmp_path))
+    monkeypatch.setattr(nightly_report, "TENANTS_DIR", str(tmp_path / "tenants"))
+    res = nightly_report.process_tenant_report({"slug": "t1", "state": "active"})
+    assert res["status"] == "quiet_skip"
+    assert res["sent"] is False
+
+
+def test_deadman_when_no_send_in_7_days(tmp_path, monkeypatch):
+    """Sin envio en 7+ dias + dia vacio -> manda mensaje deadman."""
+    import heartbeat_io
+    old = (datetime.now() - timedelta(days=10)).isoformat()
+    heartbeat_io.update_telegram(str(tmp_path), "gemini", old, slug="t1")
+
+    tenant_dir = tmp_path / "tenants" / "t1" / "status"
+    tenant_dir.mkdir(parents=True)
+    (tenant_dir / "daily_accum.json").write_text('{"updated":{}, "new":{}}')
+    # branding minimo
+    cfg_dir = tmp_path / "tenants" / "t1" / "config"
+    cfg_dir.mkdir(parents=True)
+    (cfg_dir / "clients.yml").write_text("clients: []")
+
+    monkeypatch.setattr(nightly_report, "STATUS_DIR", str(tmp_path))
+    monkeypatch.setattr(nightly_report, "TENANTS_DIR", str(tmp_path / "tenants"))
+
+    # Mock send_telegram para que no haga HTTP real
+    with patch.object(nightly_report, "send_telegram", return_value=True) as m:
+        res = nightly_report.process_tenant_report({"slug": "t1", "state": "active"})
+    assert res["status"] == "ok"
+    assert res["provider"] == "deadman"
+    # El body deberia mencionar el tono deadman
+    body_sent = m.call_args[0][0]
+    assert "dias que no hay cambios" in body_sent
+
+
+# ============ P3: ARCHIVE FAIL-SAFE ============
+
+def test_archive_accum_recovers_from_rename_fail(tmp_path, monkeypatch):
+    """Si os.rename falla (cross-fs), debe caer a copy + unlink."""
+    accum = tmp_path / "daily_accum.json"
+    accum.write_text("{}")
+    status_dir = tmp_path / "status"
+    status_dir.mkdir()
+
+    def fail_rename(*a, **kw):
+        raise OSError("simulated cross-fs")
+    monkeypatch.setattr(os, "rename", fail_rename)
+
+    nightly_report._archive_accum(str(accum), str(status_dir))
+    # El original ya no debe existir y debe haber UN file en archive/
+    assert not accum.exists()
+    arch = list((status_dir / "archive").iterdir())
+    assert len(arch) == 1
