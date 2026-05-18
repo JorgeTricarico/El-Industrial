@@ -15,12 +15,16 @@
       "note": "verificacion post-fix-gitignore"
     }
   },
-  "last_telegram_iso": "2026-05-17T23:32:46.506435",
-  "last_telegram_provider": "sambanova",
+  "last_telegram_iso": "2026-05-18T08:08:13.342584",
+  "last_telegram_provider": "filler_supplier_down",
   "tenants": {
     "demo-electricidad": {
       "last_telegram_iso": "2026-05-17T23:32:46.506435",
       "last_telegram_provider": "sambanova"
+    },
+    "el-industrial": {
+      "last_telegram_iso": "2026-05-18T08:08:13.342584",
+      "last_telegram_provider": "filler_supplier_down"
     }
   }
 }
