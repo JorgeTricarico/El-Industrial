@@ -144,8 +144,29 @@ def mirror_data_to_tenant(tenant_slug, tenant_dir):
     return True
 
 
+def _walk_files(root):
+    """Yield (rel_path con prefijo '/', abs_path) por cada archivo a deployar."""
+    for d, _dirs, files in os.walk(root):
+        for f in files:
+            abs_path = os.path.join(d, f)
+            rel = "/" + os.path.relpath(abs_path, root).replace(os.sep, "/")
+            yield rel, abs_path
+
+
+def _sha1_file(path):
+    import hashlib
+    h = hashlib.sha1()
+    with open(path, "rb") as fh:
+        for chunk in iter(lambda: fh.read(65536), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
 def deploy_to_netlify(tenant_dir, site_id, token):
-    """Sube el contenido de tenant_dir como un nuevo deploy a Netlify.
+    """Sube el contenido de tenant_dir como un nuevo deploy a Netlify usando
+    el protocolo 'digest' (POST con manifest + PUT por archivo nuevo).
+    Reemplaza el viejo zip-upload que Netlify ya no permite con tokens nuevos.
+
     Retorna (ok, message). Silently skip si falta token o site_id.
     """
     if not token or not site_id:
@@ -155,25 +176,54 @@ def deploy_to_netlify(tenant_dir, site_id, token):
     except ImportError:
         return (False, "requests no instalado")
 
-    buf = io.BytesIO()
-    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
-        for root, _dirs, files in os.walk(tenant_dir):
-            for f in files:
-                p = os.path.join(root, f)
-                z.write(p, os.path.relpath(p, tenant_dir))
-    buf.seek(0)
+    # 1. Calcular sha1 de cada archivo del tenant_dir.
+    files_map = {}            # rel_path -> sha1
+    paths_by_sha = {}         # sha1 -> abs_path (para subir despues)
+    for rel, abs_p in _walk_files(tenant_dir):
+        s = _sha1_file(abs_p)
+        files_map[rel] = s
+        paths_by_sha[s] = abs_p
+    if not files_map:
+        return (False, "tenant_dir vacio, nada que deployar")
 
-    url = f"https://api.netlify.com/api/v1/sites/{site_id}/deploys"
-    headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/zip"}
+    auth = {"Authorization": f"Bearer {token}"}
+
+    # 2. POST manifest. Netlify responde con la lista 'required' de hashes
+    # que falta subir (los demas los toma del deploy anterior).
     try:
-        res = requests.post(url, headers=headers, data=buf.read(), timeout=120)
+        res = requests.post(
+            f"https://api.netlify.com/api/v1/sites/{site_id}/deploys",
+            json={"files": files_map, "async": False},
+            headers={**auth, "Content-Type": "application/json"},
+            timeout=60,
+        )
     except requests.RequestException as e:
-        return (False, f"{type(e).__name__}: {e}")
-
+        return (False, f"manifest {type(e).__name__}: {e}")
     if not res.ok:
-        return (False, f"HTTP {res.status_code}: {res.text[:200]}")
+        return (False, f"manifest HTTP {res.status_code}: {res.text[:200]}")
     body = res.json()
-    return (True, f"deploy_id={body.get('id')} state={body.get('state')}")
+    deploy_id = body.get("id")
+    required = body.get("required") or []
+
+    # 3. PUT cada archivo en required.
+    for sha in required:
+        path = paths_by_sha.get(sha)
+        if not path:
+            continue
+        with open(path, "rb") as fh:
+            try:
+                r = requests.put(
+                    f"https://api.netlify.com/api/v1/deploys/{deploy_id}/files{[k for k,v in files_map.items() if v==sha][0]}",
+                    data=fh.read(),
+                    headers={**auth, "Content-Type": "application/octet-stream"},
+                    timeout=120,
+                )
+            except requests.RequestException as e:
+                return (False, f"upload {type(e).__name__}: {e}")
+        if not r.ok:
+            return (False, f"upload HTTP {r.status_code} en {sha[:8]}: {r.text[:120]}")
+
+    return (True, f"deploy_id={deploy_id} files={len(files_map)} uploaded={len(required)}")
 
 
 def main():
