@@ -150,15 +150,24 @@ def main(argv=None):
         return 0
 
     # Step 4: trigger nightly_report (force state=active)
+    # Monkeypatch _archive_accum a no-op para no dejar archivos en status/archive/
+    # del tenant. Asi NO queda rastro del test en el filesystem.
     print("[4/7] llamando nightly_report.process_tenant_report ...")
     fake_tenant = {"slug": slug, "state": "active"}
+    archive_dir = os.path.join(tenant_status, "archive")
+    archive_listing_before = set(os.listdir(archive_dir)) if os.path.isdir(archive_dir) else set()
+    _orig_archive = nr._archive_accum
+    nr._archive_accum = lambda *a, **kw: None
     t0 = time.time()
     try:
         result = nr.process_tenant_report(fake_tenant)
     except Exception as e:
         print(f"❌ excepcion en process_tenant_report: {type(e).__name__}: {e}", file=sys.stderr)
+        nr._archive_accum = _orig_archive
         _restore(accum_path, backup_path, had_existing)
         return 3
+    finally:
+        nr._archive_accum = _orig_archive
     elapsed = time.time() - t0
     print(f"      resultado: {result} ({elapsed:.1f}s)")
 
@@ -214,6 +223,14 @@ def main(argv=None):
         failures.append(f"backup huerfano sin limpiar: {backup_path}")
     else:
         print("      ✓ sin backup huerfano")
+
+    # 7f: archive del tenant no debe tener entradas nuevas (monkeypatch del archive deberia haberlo evitado)
+    archive_listing_after = set(os.listdir(archive_dir)) if os.path.isdir(archive_dir) else set()
+    new_archives = archive_listing_after - archive_listing_before
+    if new_archives:
+        failures.append(f"archive del tenant tiene entradas nuevas: {sorted(new_archives)}")
+    else:
+        print("      ✓ archive del tenant sin entradas nuevas")
 
     if failures:
         print("\n❌ FAIL:", file=sys.stderr)
