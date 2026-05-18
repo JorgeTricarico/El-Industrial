@@ -8,6 +8,10 @@ reports/
 status/*
 !status/heartbeat.json
 status/archive/
+# Per-tenant status no se commitea (daily_accum, archive, etc).
+# Solo es estado runtime del nodo que corrio update_products.
+tenants/*/status/
+.claude/
 !data/
 !latest-json-filename.json
 !latest-json-filename.txt
