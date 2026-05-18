@@ -117,13 +117,27 @@ def test_send_alert_no_credenciales_devuelve_false():
 
 # ============ DRIFT DE VERSION ============
 
+def _mock_git_outputs(short_sha, commit_iso):
+    """Helper: mockea subprocess.check_output para devolver el SHA en la 1er
+    llamada y el ISO del commit en la 2da."""
+    return [
+        short_sha.encode() + b"\n",
+        commit_iso.encode() + b"\n",
+    ]
+
+
 @patch('healthcheck.subprocess.check_output')
 @patch('healthcheck.subprocess.check_call')
 def test_drift_detecta_version_distinta(mock_call, mock_out):
-    """Si la version de algun nodo != origin/main, debe reportar drift."""
+    """Si la version de un nodo != origin/main Y el nodo pulleo despues del
+    commit, debe reportar drift (git pull esta roto)."""
     mock_call.return_value = 0
-    mock_out.return_value = b"deadbee\n"
-    hb = {"nodes": {"raspberrypi": {"version": "cafe123"}}}
+    # commit en origin del 2026-05-18 10:00, nodo pulleo a las 11:00 (post-commit)
+    mock_out.side_effect = _mock_git_outputs("deadbee", "2026-05-18T10:00:00")
+    hb = {"nodes": {"raspberrypi": {
+        "version": "cafe123",
+        "last_pulled_iso": "2026-05-18T11:00:00",
+    }}}
     drifts = healthcheck.detect_version_drift(hb)
     assert len(drifts) == 1
     assert "cafe123" in drifts[0] and "deadbee" in drifts[0]
@@ -132,10 +146,28 @@ def test_drift_detecta_version_distinta(mock_call, mock_out):
 
 @patch('healthcheck.subprocess.check_output')
 @patch('healthcheck.subprocess.check_call')
+def test_drift_silencioso_si_nodo_no_pulleo_post_commit(mock_call, mock_out):
+    """Si el nodo pulleo ANTES del commit nuevo, NO es drift (es 'todavia no
+    le toco el cron'). Caso lunes-mañana antes del cron de las 20:00."""
+    mock_call.return_value = 0
+    # commit en origin 2026-05-18 10:00, nodo pulleo el 2026-05-17 22:00 (Sabado, pre-commit)
+    mock_out.side_effect = _mock_git_outputs("deadbee", "2026-05-18T10:00:00")
+    hb = {"nodes": {"raspberrypi": {
+        "version": "cafe123",
+        "last_pulled_iso": "2026-05-17T22:00:00",
+    }}}
+    assert healthcheck.detect_version_drift(hb) == []
+
+
+@patch('healthcheck.subprocess.check_output')
+@patch('healthcheck.subprocess.check_call')
 def test_drift_silencioso_si_versiones_coinciden(mock_call, mock_out):
     mock_call.return_value = 0
-    mock_out.return_value = b"cafe123\n"
-    hb = {"nodes": {"raspberrypi": {"version": "cafe123"}}}
+    mock_out.side_effect = _mock_git_outputs("cafe123", "2026-05-18T10:00:00")
+    hb = {"nodes": {"raspberrypi": {
+        "version": "cafe123",
+        "last_pulled_iso": "2026-05-18T11:00:00",
+    }}}
     assert healthcheck.detect_version_drift(hb) == []
 
 
@@ -219,3 +251,31 @@ tenants:
 """)
     problems = healthcheck.detect_public_site_stale()
     assert problems == []
+
+
+# ============ STALE TOLERANCE LUN-SAB ============
+
+def test_expected_stale_hours_lunes_temprano_tolera_weekend(monkeypatch):
+    """Lunes 8 AM: tolera 50h porque la data puede ser del Sabado."""
+    import datetime as _dt
+    fixed = _dt.datetime(2026, 5, 18, 8, 0)  # Lunes 8AM
+    assert healthcheck._expected_stale_hours(fixed) == 50
+
+
+def test_expected_stale_hours_domingo_tolera_weekend():
+    import datetime as _dt
+    fixed = _dt.datetime(2026, 5, 17, 12, 0)  # Domingo mediodia
+    assert healthcheck._expected_stale_hours(fixed) == 50
+
+
+def test_expected_stale_hours_lunes_tarde_threshold_normal():
+    """Lunes 21:00: ya paso el cron 20:00, threshold normal."""
+    import datetime as _dt
+    fixed = _dt.datetime(2026, 5, 18, 21, 0)
+    assert healthcheck._expected_stale_hours(fixed) == healthcheck.THRESHOLD_HOURS
+
+
+def test_expected_stale_hours_martes_threshold_normal():
+    """Martes cualquier hora: threshold 26h."""
+    import datetime as _dt
+    assert healthcheck._expected_stale_hours(_dt.datetime(2026, 5, 19, 9, 0)) == healthcheck.THRESHOLD_HOURS

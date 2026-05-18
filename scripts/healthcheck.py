@@ -77,8 +77,13 @@ def last_n_runs(n=3):
 def detect_version_drift(heartbeat):
     """Compara la version de CADA nodo en el heartbeat con origin/main.
 
-    Hace git fetch una vez y compara. Devuelve lista de mensajes (uno por nodo
-    con drift). Si falla la red o git, retorna [] silenciosamente.
+    NO alerta si el nodo simplemente todavia no corrio cron desde el ultimo
+    commit (caso normal: commit a las 15:00, cron del nodo a las 20:00; en
+    el medio el healthcheck no debe alarmar). Solo alerta si el nodo
+    `last_pulled_iso` es POSTERIOR al commit pero la version siguio vieja
+    — eso significa git pull esta roto.
+
+    Si falla la red o git, retorna [] silenciosamente.
     """
     if not heartbeat:
         return []
@@ -94,20 +99,50 @@ def detect_version_drift(heartbeat):
             ["git", "-C", BASE_DIR, "rev-parse", "--short", "origin/main"],
             timeout=5, stderr=subprocess.DEVNULL,
         ).decode().strip()
+        # Timestamp del ultimo commit en origin/main (ISO).
+        remote_commit_iso = subprocess.check_output(
+            ["git", "-C", BASE_DIR, "log", "-1", "--format=%cI", "origin/main"],
+            timeout=5, stderr=subprocess.DEVNULL,
+        ).decode().strip()
     except (subprocess.CalledProcessError, subprocess.TimeoutExpired, FileNotFoundError, OSError):
         return []
     if not remote_ver:
         return []
+    try:
+        remote_dt = datetime.fromisoformat(remote_commit_iso)
+        # Convertir a naive local time para comparar con los ISO del heartbeat
+        # que estan en TZ local sin offset.
+        if remote_dt.tzinfo is not None:
+            remote_dt = remote_dt.astimezone().replace(tzinfo=None)
+    except (ValueError, TypeError):
+        remote_dt = None
+
     drifts = []
     for name, entry in nodes.items():
         node_ver = entry.get("version", "")
         if not node_ver or node_ver == "unknown":
             continue
-        if not (node_ver.startswith(remote_ver) or remote_ver.startswith(node_ver)):
+        if node_ver.startswith(remote_ver) or remote_ver.startswith(node_ver):
+            continue  # version OK
+        # Hay diferencia de version. ¿El nodo pulleo DESPUES del commit?
+        last_pulled = entry.get("last_pulled_iso") or entry.get("last_run", "")
+        node_pulled_after_commit = False
+        if last_pulled and remote_dt:
+            try:
+                node_dt = datetime.fromisoformat(last_pulled.replace("Z", ""))
+                if node_dt.tzinfo is not None:
+                    node_dt = node_dt.astimezone().replace(tzinfo=None)
+                # 1 min de tolerancia por skew de clocks
+                node_pulled_after_commit = node_dt > remote_dt + timedelta(minutes=1)
+            except (ValueError, TypeError):
+                pass
+        if node_pulled_after_commit:
             drifts.append(
                 f"Drift de version: el nodo '{name}' corrio HEAD={node_ver} "
                 f"pero origin/main esta en {remote_ver}. El nodo no esta pulleando."
             )
+        # Si no pulleo despues del commit, NO alertamos: es normal que el nodo
+        # tenga version vieja mientras espera su proximo cron.
     return drifts
 
 
@@ -166,14 +201,37 @@ def diagnose():
     return "ok", []
 
 
+def _expected_stale_hours(now=None):
+    """Cuanto puede tener la data publica sin que sea sospechoso, segun el
+    momento de la semana. El cron es Lun-Sab → Sabado a la noche es la
+    ultima corrida hasta Lunes 20:00 AR. Mientras tanto la data esta
+    'fresca por diseño' aunque tenga 40+ horas.
+
+    Default: THRESHOLD_HOURS (26h). Domingo/Lunes-temprano: hasta 50h.
+    """
+    now = now or datetime.now()
+    wd = now.weekday()  # 0=Lun..6=Dom
+    # Domingo todo el dia: ultimo cron fue Sab ~22:00, tolerancia amplia.
+    if wd == 6:
+        return 50
+    # Lunes antes del cron de las 20:00 AR: data sigue siendo del Sabado.
+    if wd == 0 and now.hour < 20:
+        return 50
+    return THRESHOLD_HOURS
+
+
 def detect_public_site_stale():
     """Para cada tenant active/testing en _registry.yml, fetch su pointer publico
     (https://<url>/latest-json-filename.txt) y compara con el pointer local del
-    repo. Si el publico apunta a un archivo mas viejo que THRESHOLD_HOURS, alerta.
+    repo. Si el publico apunta a un archivo mas viejo que el umbral, alerta.
+
+    Umbral default 26h, pero Domingo y Lunes-antes-de-las-20 se relaja a 50h
+    porque el cron es Lun-Sab (no actualiza Domingo).
 
     Esto cubre el bug del 27/04-17/05 donde el sitio sirvio data congelada
     porque los deploys de Netlify fallaban silenciosamente.
     """
+    threshold_h = _expected_stale_hours()
     problems = []
     registry = os.path.join(BASE_DIR, "tenants", "_registry.yml")
     if not os.path.exists(registry):
@@ -213,10 +271,11 @@ def detect_public_site_stale():
         except ValueError:
             continue
         age_h = (datetime.now() - file_date).total_seconds() / 3600
-        if age_h > THRESHOLD_HOURS:
+        if age_h > threshold_h:
             problems.append(
                 f"Sitio publico {t.get('slug')} sirve data del {file_date.date()} "
-                f"({age_h:.0f}h atras). El deploy a Netlify NO esta llegando."
+                f"({age_h:.0f}h atras, umbral hoy {threshold_h:.0f}h). "
+                "El deploy a Netlify NO esta llegando."
             )
     return problems
 

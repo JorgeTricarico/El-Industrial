@@ -129,6 +129,11 @@ jobs:
         env:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          # ai_diagnose usa la cadena de fallback de nightly_report; sin keys
+          # cae a template y manda mensajes pobres.
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
+          SAMBANOVA_API_KEY: ${{ secrets.SAMBANOVA_API_KEY }}
         # continue-on-error porque exit-code != 0 indica "alerta enviada", no falla CI
         continue-on-error: true
         run: python3 scripts/healthcheck.py
