@@ -249,6 +249,25 @@
 
 ---
 
+## Pendientes operativos (2026-05-18)
+
+### Q1 — demo-electricidad Netlify HTTP 401
+
+- **status**: pending
+- **prioridad**: BAJA
+
+**Problema**: `system_audit.check_netlify_build_settings` reporta HTTP 401 al hacer GET del site `0d1ebe3c-6d84-49ba-a62d-64bc0c4e38a4` (demo-electricidad). El token Netlify actual da 200 para `el-industrial` (4b069fdc) pero 401 para demo. El site existe en Netlify pero pertenece a otra cuenta/team que el token nuevo no cubre.
+
+**Opciones**:
+- Borrar el site demo-electricidad en Netlify y recrearlo bajo la cuenta del token actual.
+- Marcar demo-electricidad `state: inactive` en `tenants/_registry.yml` si no se usa para mostrar a prospects.
+- Agregar campo `audit_netlify: false` al tenant para skipear el chequeo.
+
+**Acceptance**:
+- Próximo `Weekly System Audit` reporta 0 observaciones (o 1 controlada que sepamos que es inevitable).
+
+---
+
 ## Hitos arquitectura cluster (2026-05-18)
 
 ### H4 — Onboarding manual de nodos backup
