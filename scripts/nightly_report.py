@@ -280,32 +280,35 @@ def classify_magnitude(top_hikes):
 
 _MAGNITUDE_INSTRUCTIONS = {
     "negligible": (
-        "DIA TRANQUILO. Los cambios son infimos (probable redondeo del proveedor). "
+        "DIA TRANQUILO. Cambios infimos (probable redondeo del mayorista). "
         "HACELO ASI: una sola linea diciendo que el dia fue tranquilo, "
-        "que los cambios son minimos. SIN bullets. NO recomendes ninguna accion "
-        "(prohibido 're-cotizar', 'revisar', 'avisar a clientes'). "
-        "Ej: 'Dia tranquilo. Un par de productos se movieron unos centavos, "
-        "nada para avisar.' Listo."
+        "los cambios son minimos, no hace falta tocar la lista ni avisar "
+        "a clientes. SIN bullets. SIN recomendacion de re-cotizar. "
+        "Ej: 'Dia tranquilo. Cambios de centavos en pocos items, no hace falta "
+        "ajustar nada.' Listo."
     ),
     "minor": (
-        "MOVIMIENTO CHICO. Subas/bajas de pocos pesos. "
-        "HACELO ASI: 1 linea de resumen + 2-3 bullets con los cambios mas "
-        "notorios (el que mas cambio en pesos, no en %). NO uses palabras "
-        "como 're-cotizar' o 'revisar pedidos'. Si pones recomendacion, que "
-        "sea solo si hay UN producto que cambio mucho ($ concretos)."
+        "MOVIMIENTO CHICO. Subas/bajas chicas. "
+        "HACELO ASI: 1 linea de resumen + 2-3 bullets con los items que mas "
+        "cambiaron EN PESOS. Si hay UN producto puntual que cambio mas de 5%, "
+        "mencionar al final 'si tenes cotizacion abierta con ese, revisalo'. "
+        "Sino, sin recomendacion."
     ),
     "moderate": (
         "MOVIMIENTO NORMAL del dia. "
         "HACELO ASI: 1 linea de resumen + 3-5 bullets con los productos que mas "
-        "cambiaron (priorizar los de mayor cambio en pesos). Si hay alguno que "
-        "vale la pena revisar antes de cobrarlo, decilo en 1 linea final, sin jerga."
+        "subieron/bajaron en pesos. Si se ve algun rubro mas afectado "
+        "(electrico, construccion, herramientas), mencionalo en el resumen. "
+        "Linea final: 'conviene repasar cotizaciones abiertas de [rubro] antes "
+        "de facturar'."
     ),
     "strong": (
-        "DIA CON MOVIMIENTO FUERTE. "
-        "HACELO ASI: 1 linea diciendo que hoy hubo cambios importantes + "
-        "top 5 bullets con los productos mas movidos (pesos viejos -> nuevos). "
-        "1 linea final concreta: que conviene chequear precios viejos pasados a "
-        "clientes antes de facturar."
+        "MOVIMIENTO FUERTE del mayorista. "
+        "HACELO ASI: 1 linea contundente (sin alarmismo) + top 5 bullets con "
+        "los productos mas movidos (pesos viejo -> nuevo). Si hay un rubro "
+        "claramente mas afectado, decirlo. Linea final concreta: 'pasa de "
+        "nuevo precios a los clientes que cotizaste esta semana, varios "
+        "cambiaron bastante'."
     ),
 }
 
@@ -323,6 +326,7 @@ def build_prompt(updated_items, top_brands, top_hikes, magnitude=None):
             if old_p > 0:
                 top_changes.append({
                     "name": (item.get("name") or "")[:60],
+                    "marca": item.get("marca") or item.get("brand") or "",
                     "old": round(old_p, 2),
                     "new": round(new_p, 2),
                     "pct": round((new_p - old_p) / old_p * 100, 2),
@@ -331,20 +335,29 @@ def build_prompt(updated_items, top_brands, top_hikes, magnitude=None):
             continue
     top_changes.sort(key=lambda x: abs(x["new"] - x["old"]), reverse=True)
     top_changes = top_changes[:5]
-    return f"""Sos el ayudante de un comerciante chico de ferreteria en Argentina.
-Le mandas un Telegram corto contandole que se movio hoy en la lista del mayorista.
+    return f"""Sos el ayudante de un mayorista chico de electricidad y ferreteria
+en Argentina. EL le compra a mayoristas mas grandes (tipo Bertual) y le vende
+a ferreterias, electricistas, arquitectos y constructores que cotizan obras.
 
-Quien lo lee NO es analista. Es un comerciante que tiene 30 segundos para verlo
-entre cliente y cliente. Hablale como un amigo del local, no como consultor.
+Tu Telegram nocturno le avisa que paso hoy con la lista del mayorista al que
+le compra. El usa esa info para decidir si tiene que actualizar su propia lista
+o repasar cotizaciones que ya paso a clientes.
+
+Quien lo lee es un comerciante practico, no un analista. Tiene 30 segundos
+para leerlo entre llamadas. No le hables como consultor.
 
 Reglas duras (no negociables):
-- TONO: coloquial argentino, directo, en pesos. Sin jerga ("rubro", "cotizar",
-  "ajuste", "recalibrar" -> fuera).
-- PROHIBIDO: "critico", "alarmante", "riesgo", "historico", "masivo", emojis
-  de alarma. Maximo 📌 al inicio.
-- MAXIMO 600 caracteres total (mensaje corto, no informe largo).
-- Sin "Hola" ni "Saludos". Va directo al grano.
-- Cuando muestres cambios, en PESOS: "$1.075 -> $1.082". Si pones %, secundario.
+- TONO: coloquial argentino, directo. Como un amigo del local que sabe del
+  rubro. Hablale de "vos", no de "usted".
+- PROHIBIDO: "critico", "alarmante", "riesgo", "historico", "masivo",
+  "sin precedentes". Sin emojis de alarma. Maximo 📌 al inicio.
+- MOSTRAR CAMBIOS EN PESOS: "$1.075 -> $1.082". El % es complemento, va
+  entre parentesis si entra.
+- MAXIMO 600 caracteres (mensaje breve).
+- Sin "Hola" ni "Saludos". Directo al grano.
+- "Cotizacion", "lista", "facturar", "rubro" son palabras ADECUADAS (es B2B,
+  no kiosco). Lo que NO va es alarmismo ni jerga consultora ("recalibrar",
+  "estrategico", "panorama").
 
 Datos del dia:
 - Productos actualizados: {len(updated_items)}

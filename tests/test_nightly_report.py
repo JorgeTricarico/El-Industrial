@@ -146,17 +146,31 @@ def test_classify_magnitude_strong():
 
 # ============ TONO DEL PROMPT ============
 
-def test_prompt_menciona_comerciante_y_ferreteria():
-    """El prompt debe posicionar al LLM como ayudante de comerciante chico, no analista."""
+def test_prompt_describe_negocio_b2b_intermediario():
+    """El prompt debe explicar que el lector es un mayorista chico B2B
+    (compra a mayoristas grandes, vende a ferreterias/electricistas/etc).
+    """
     prompt = nightly_report.build_prompt([], [], [])
     p = prompt.lower()
-    assert "comerciante" in p
+    assert "mayorista" in p, "tiene que decir que es mayorista chico"
     assert "ferreteria" in p
+    # Audience: pros de la obra/electricidad
+    assert "electricista" in p or "arquitecto" in p or "constructor" in p
     if "analista" in p:
         idx = p.index("analista")
         contexto_previo = p[max(0, idx - 30):idx]
-        assert "no " in contexto_previo, \
-            f"'analista' aparece sin contexto negativo: ...{contexto_previo}analista..."
+        assert "no " in contexto_previo
+
+
+def test_prompt_permite_jerga_b2b_pero_prohibe_consultora():
+    """Es B2B: 'cotizacion', 'lista', 'rubro' SON adecuadas. Lo que NO va es
+    'estrategico', 'recalibrar' tipo consultor."""
+    prompt = nightly_report.build_prompt([], [], [])
+    p = prompt.lower()
+    assert "cotizacion" in p, "cotizacion es palabra util para B2B"
+    # Estas son las que deben estar prohibidas explicitamente
+    assert "estrategico" in p or "recalibrar" in p, \
+        "el prompt debe nombrar al menos una palabra de consultor como prohibida"
 
 
 def test_prompt_prohibe_palabras_alarmistas():
@@ -177,12 +191,14 @@ def test_prompt_pide_formato_html_y_es_corto():
 
 
 def test_prompt_en_dia_tranquilo_pide_no_recomendar():
-    """Si la magnitud es negligible, el prompt instruye al LLM a no recomendar nada."""
+    """Si la magnitud es negligible, el prompt prohibe sugerir re-cotizar."""
     top_hikes = [{"n": "x", "p": 0.01, "m": "A"}]  # negligible
     prompt = nightly_report.build_prompt([], [], top_hikes)
     p = prompt.lower()
     assert "tranquilo" in p
-    assert "no recomend" in p
+    # Debe instruir explicitamente a NO recomendar accion (re-cotizar, ajustar)
+    assert "sin recomendacion" in p or "sin bullets" in p
+    assert "no hace falta" in p
 
 
 def test_prompt_pide_montos_en_pesos():
