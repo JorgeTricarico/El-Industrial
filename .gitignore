@@ -5,8 +5,9 @@ __pycache__/
 .env.*
 !.env.example
 reports/
-status/
+status/*
 !status/heartbeat.json
+status/archive/
 !data/
 !latest-json-filename.json
 !latest-json-filename.txt

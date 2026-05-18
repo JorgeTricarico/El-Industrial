@@ -1,0 +1,11 @@
+{
+  "nodes": {
+    "DESKTOP-MI43BOU": {
+      "last_run": "2026-05-18T02:29:52.428029",
+      "last_outcome": "bootstrap",
+      "version": "d6da77d",
+      "role_declared": "backup",
+      "note": "setup_node.sh role=backup offset=60"
+    }
+  }
+}
