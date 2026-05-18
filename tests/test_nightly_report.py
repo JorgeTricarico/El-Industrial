@@ -111,58 +111,84 @@ def test_chain_no_keys_falls_to_template():
 
 # ============ PLANTILLA FALLBACK ============
 
-def test_template_fallback_genera_mensaje_no_vacio():
-    """Aun con listas vacias la plantilla devuelve mensaje util."""
-    msg = nightly_report.render_template_fallback([], [], [], "17/05/2026")
-    assert "Resumen del dia" in msg
-    assert "17/05/2026" in msg
+def test_template_fallback_negligible_es_una_sola_linea():
+    """Dia tranquilo: mensaje cortito, sin bullets ni recomendaciones."""
+    updated = [{"name": "x", "old": "100", "new": "100.01"}]
+    top_hikes = [{"n": "x", "p": 0.01, "m": "A"}]
+    msg = nightly_report.render_template_fallback(updated, [], top_hikes, "17/05/2026")
+    assert "tranquilo" in msg.lower()
+    assert "•" not in msg  # sin bullets
     assert "IA no disponible" in msg
-    assert len(msg) > 50
 
 
 def test_template_fallback_con_datos_reales():
-    updated = [{"name": "x", "marca": "A"}] * 7
-    top_brands = [("ARGENPLAS", 5), ("SCHNEIDER", 3)]
-    top_hikes = [{"n": "Cable BS 3x16", "p": 5.8, "m": "ARGENPLAS"}]
-    msg = nightly_report.render_template_fallback(updated, top_brands, top_hikes, "17/05/2026")
-    assert "7 productos" in msg
-    assert "ARGENPLAS" in msg
-    assert "+5.8%" in msg
-    assert "Cable BS 3x16" in msg
+    """Dia con movimiento: bullets en pesos viejo -> nuevo."""
+    updated = [{"name": f"Producto {i}", "marca": "A", "old": "100", "new": "108"}
+               for i in range(7)]
+    top_hikes = [{"n": f"Producto {i}", "p": 8.0, "m": "A"} for i in range(7)]
+    msg = nightly_report.render_template_fallback(updated, [], top_hikes, "17/05/2026")
+    assert "7 producto" in msg
+    assert "$100" in msg and "$108" in msg
+    assert "→" in msg or "->" in msg
+
+
+def test_classify_magnitude_negligible():
+    top_hikes = [{"n": "x", "p": 0.05, "m": "A"}]
+    m = nightly_report.classify_magnitude(top_hikes)
+    assert m["class"] == "negligible"
+
+
+def test_classify_magnitude_strong():
+    top_hikes = [{"n": "x", "p": 15.0, "m": "A"}, {"n": "y", "p": 12.0, "m": "B"}]
+    m = nightly_report.classify_magnitude(top_hikes)
+    assert m["class"] == "strong"
 
 
 # ============ TONO DEL PROMPT ============
 
-def test_prompt_menciona_persona_vendedor_pyme():
-    """El prompt debe posicionar al LLM como asistente de vendedor PYME, no analista."""
+def test_prompt_menciona_comerciante_y_ferreteria():
+    """El prompt debe posicionar al LLM como ayudante de comerciante chico, no analista."""
     prompt = nightly_report.build_prompt([], [], [])
     p = prompt.lower()
-    assert "vendedor" in p
-    assert "pyme" in p or "ferreteria" in p
-    # Si menciona "analista" debe ser en contexto negativo ("NO como analista")
+    assert "comerciante" in p
+    assert "ferreteria" in p
     if "analista" in p:
         idx = p.index("analista")
         contexto_previo = p[max(0, idx - 30):idx]
-        assert "no como" in contexto_previo or "no actues como" in contexto_previo, \
+        assert "no " in contexto_previo, \
             f"'analista' aparece sin contexto negativo: ...{contexto_previo}analista..."
 
 
 def test_prompt_prohibe_palabras_alarmistas():
-    """El prompt debe instruir explicitamente a evitar palabras alarmistas."""
+    """El prompt debe prohibir palabras alarmistas."""
     prompt = nightly_report.build_prompt([], [], [])
     p = prompt.lower()
-    # Si aparecen palabras de alarma, deben estar en contexto prohibitivo
-    for palabra in ["critico", "alarmante", "advertencia", "riesgo"]:
-        if palabra in p:
-            # Debe estar precedida por "nunca uses" o similar
-            assert "nunca uses" in p, f"'{palabra}' aparece sin contexto prohibitivo"
+    assert "prohibido" in p
+    # cada palabra alarmista debe aparecer en la lista de prohibidas
+    for palabra in ["critico", "alarmante", "riesgo", "historico", "masivo"]:
+        assert palabra in p, f"falta prohibir '{palabra}'"
 
 
-def test_prompt_pide_formato_html_acotado():
-    """El prompt debe pedir HTML simple, max 1200 chars."""
+def test_prompt_pide_formato_html_y_es_corto():
+    """HTML simple + maximo ~600 chars en el mensaje final."""
     prompt = nightly_report.build_prompt([], [], [])
     assert "<b>" in prompt
-    assert "1200" in prompt
+    assert "600" in prompt
+
+
+def test_prompt_en_dia_tranquilo_pide_no_recomendar():
+    """Si la magnitud es negligible, el prompt instruye al LLM a no recomendar nada."""
+    top_hikes = [{"n": "x", "p": 0.01, "m": "A"}]  # negligible
+    prompt = nightly_report.build_prompt([], [], top_hikes)
+    p = prompt.lower()
+    assert "tranquilo" in p
+    assert "no recomend" in p
+
+
+def test_prompt_pide_montos_en_pesos():
+    """El prompt debe pedir mostrar cambios en pesos, no solo en %."""
+    prompt = nightly_report.build_prompt([], [], [])
+    assert "pesos" in prompt.lower()
 
 
 # ============ SANITIZACION ============

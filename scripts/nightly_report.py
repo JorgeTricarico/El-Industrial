@@ -97,23 +97,55 @@ PROVIDERS = [
 ]
 
 
-def render_template_fallback(updated_items, top_brands, top_hikes, fecha):
-    """Mensaje plantilla cuando los 3 LLMs fallan. Garantiza entrega a Telegram."""
-    lines = [f"<b>Resumen del dia — {fecha}</b>",
-             f"{len(updated_items)} productos actualizados.", ""]
-    if top_brands:
-        lines.append("<b>Marcas con mas cambios:</b>")
-        for brand, count in top_brands[:5]:
-            lines.append(f"• {brand} ({count})")
+def render_template_fallback(updated_items, top_brands, top_hikes, fecha, magnitude=None):
+    """Mensaje plantilla cuando los 3 LLMs fallan. Garantiza entrega a Telegram.
+    Respeta la misma logica de magnitud para no recomendar nada en dia tranquilo.
+    """
+    if magnitude is None:
+        magnitude = classify_magnitude(top_hikes)
+    cls = magnitude["class"]
+    # Dia tranquilo: una sola linea, sin bullets.
+    if cls == "negligible":
+        return (
+            f"<b>Lista del dia — {fecha}</b>\n"
+            f"Dia tranquilo. {len(updated_items)} producto(s) con cambios infimos "
+            f"(promedio {magnitude['avg_abs_pct']}%, probable redondeo). "
+            f"Nada para avisar.\n"
+            f"<i>(IA no disponible hoy)</i>"
+        )
+    # Resto: bullets en pesos, cantidad segun magnitud.
+    n_bullets = {"minor": 2, "moderate": 4, "strong": 5}.get(cls, 3)
+    top_changes = []
+    for item in updated_items:
+        try:
+            old_p = float(item.get("old", 0))
+            new_p = float(item.get("new", 0))
+            if old_p > 0:
+                top_changes.append({
+                    "name": (item.get("name") or "")[:60],
+                    "old": old_p, "new": new_p,
+                    "diff": abs(new_p - old_p),
+                })
+        except (TypeError, ValueError):
+            continue
+    top_changes.sort(key=lambda x: x["diff"], reverse=True)
+    intro = {
+        "minor": "Movimiento chico hoy.",
+        "moderate": "Cambios normales del dia.",
+        "strong": "Hoy hubo cambios importantes.",
+    }[cls]
+    lines = [
+        f"<b>Lista del dia — {fecha}</b>",
+        f"{intro} {len(updated_items)} producto(s) actualizado(s).",
+        "",
+    ]
+    for c in top_changes[:n_bullets]:
+        lines.append(f"• {c['name']}: ${c['old']:.2f} → ${c['new']:.2f}")
+    if cls == "strong":
         lines.append("")
-    if top_hikes:
-        lines.append("<b>Mayores subas:</b>")
-        for h in top_hikes[:5]:
-            nombre = (h.get("n") or "")[:60]
-            pct = h.get("p", 0)
-            lines.append(f"• {nombre}: {pct:+.1f}%")
-        lines.append("")
-    lines.append("<i>Reporte automatico (IA no disponible hoy)</i>")
+        lines.append("<i>Conviene chequear precios pasados a clientes antes de facturar.</i>")
+    lines.append("")
+    lines.append("<i>(IA no disponible hoy)</i>")
     return "\n".join(lines)
 
 
@@ -204,27 +236,127 @@ def send_telegram(message, clients_path=None):
     return sent_count > 0
 
 
-def build_prompt(updated_items, top_brands, top_hikes):
-    return f"""Sos el asistente de un vendedor de ferreteria industrial PYME en Argentina.
-Tu mensaje va a Telegram y el vendedor puede reenviarlo a clientes.
+# Umbral en % por debajo del cual un cambio individual se considera "ruido"
+# (redondeo del proveedor, ajuste por centavos). No amerita accion comercial.
+NOISE_PCT = 0.5
+# Umbral del cambio MEDIO global por debajo del cual el dia se clasifica
+# como "ruidoso" (no hay movimiento real, solo recalculos).
+MAGNITUDE_NEGLIGIBLE = 1.0   # < 1% promedio = dia sin novedades
+MAGNITUDE_MINOR = 3.0        # < 3% promedio = movimiento chico
+MAGNITUDE_MODERATE = 8.0     # < 8% promedio = movimiento normal
+# >= MAGNITUDE_MODERATE -> dia "fuerte"
 
-Tono: coloquial argentino, directo, util. Como un colega que avisa algo concreto,
-NO como un analista de mercado. NUNCA uses palabras: "critico", "alarmante",
-"advertencia", "riesgo", "historico", "sin precedentes", "masivo". NUNCA pongas
-emojis de alarma. Como mucho un 📌 al inicio.
 
-Datos de hoy:
+def classify_magnitude(top_hikes):
+    """Clasifica el dia en base a magnitud de cambios.
+
+    Devuelve dict con:
+      class: 'negligible' | 'minor' | 'moderate' | 'strong'
+      avg_abs_pct: promedio absoluto de % de cambio (para contexto)
+      max_pct: maximo % observado (signo preservado)
+      meaningful_count: cuantos items pasan NOISE_PCT
+      noise_count: cuantos items estan POR DEBAJO de NOISE_PCT (redondeo)
+    """
+    if not top_hikes:
+        return {"class": "negligible", "avg_abs_pct": 0.0, "max_pct": 0.0,
+                "meaningful_count": 0, "noise_count": 0}
+    abs_pcts = [abs(h["p"]) for h in top_hikes]
+    avg = sum(abs_pcts) / len(abs_pcts)
+    max_p = max(top_hikes, key=lambda h: abs(h["p"]))["p"]
+    meaningful = sum(1 for p in abs_pcts if p >= NOISE_PCT)
+    noise = len(abs_pcts) - meaningful
+    if avg < MAGNITUDE_NEGLIGIBLE and abs(max_p) < MAGNITUDE_MINOR:
+        cls = "negligible"
+    elif avg < MAGNITUDE_MINOR:
+        cls = "minor"
+    elif avg < MAGNITUDE_MODERATE:
+        cls = "moderate"
+    else:
+        cls = "strong"
+    return {"class": cls, "avg_abs_pct": round(avg, 2),
+            "max_pct": round(max_p, 2),
+            "meaningful_count": meaningful, "noise_count": noise}
+
+
+_MAGNITUDE_INSTRUCTIONS = {
+    "negligible": (
+        "DIA TRANQUILO. Los cambios son infimos (probable redondeo del proveedor). "
+        "HACELO ASI: una sola linea diciendo que el dia fue tranquilo, "
+        "que los cambios son minimos. SIN bullets. NO recomendes ninguna accion "
+        "(prohibido 're-cotizar', 'revisar', 'avisar a clientes'). "
+        "Ej: 'Dia tranquilo. Un par de productos se movieron unos centavos, "
+        "nada para avisar.' Listo."
+    ),
+    "minor": (
+        "MOVIMIENTO CHICO. Subas/bajas de pocos pesos. "
+        "HACELO ASI: 1 linea de resumen + 2-3 bullets con los cambios mas "
+        "notorios (el que mas cambio en pesos, no en %). NO uses palabras "
+        "como 're-cotizar' o 'revisar pedidos'. Si pones recomendacion, que "
+        "sea solo si hay UN producto que cambio mucho ($ concretos)."
+    ),
+    "moderate": (
+        "MOVIMIENTO NORMAL del dia. "
+        "HACELO ASI: 1 linea de resumen + 3-5 bullets con los productos que mas "
+        "cambiaron (priorizar los de mayor cambio en pesos). Si hay alguno que "
+        "vale la pena revisar antes de cobrarlo, decilo en 1 linea final, sin jerga."
+    ),
+    "strong": (
+        "DIA CON MOVIMIENTO FUERTE. "
+        "HACELO ASI: 1 linea diciendo que hoy hubo cambios importantes + "
+        "top 5 bullets con los productos mas movidos (pesos viejos -> nuevos). "
+        "1 linea final concreta: que conviene chequear precios viejos pasados a "
+        "clientes antes de facturar."
+    ),
+}
+
+
+def build_prompt(updated_items, top_brands, top_hikes, magnitude=None):
+    if magnitude is None:
+        magnitude = classify_magnitude(top_hikes)
+    magnitude_block = _MAGNITUDE_INSTRUCTIONS[magnitude["class"]]
+    # Top 5 con pesos viejo/nuevo para que el LLM pueda mostrar montos reales.
+    top_changes = []
+    for item in updated_items[:30]:
+        try:
+            old_p = float(item.get("old", 0))
+            new_p = float(item.get("new", 0))
+            if old_p > 0:
+                top_changes.append({
+                    "name": (item.get("name") or "")[:60],
+                    "old": round(old_p, 2),
+                    "new": round(new_p, 2),
+                    "pct": round((new_p - old_p) / old_p * 100, 2),
+                })
+        except (TypeError, ValueError):
+            continue
+    top_changes.sort(key=lambda x: abs(x["new"] - x["old"]), reverse=True)
+    top_changes = top_changes[:5]
+    return f"""Sos el ayudante de un comerciante chico de ferreteria en Argentina.
+Le mandas un Telegram corto contandole que se movio hoy en la lista del mayorista.
+
+Quien lo lee NO es analista. Es un comerciante que tiene 30 segundos para verlo
+entre cliente y cliente. Hablale como un amigo del local, no como consultor.
+
+Reglas duras (no negociables):
+- TONO: coloquial argentino, directo, en pesos. Sin jerga ("rubro", "cotizar",
+  "ajuste", "recalibrar" -> fuera).
+- PROHIBIDO: "critico", "alarmante", "riesgo", "historico", "masivo", emojis
+  de alarma. Maximo 📌 al inicio.
+- MAXIMO 600 caracteres total (mensaje corto, no informe largo).
+- Sin "Hola" ni "Saludos". Va directo al grano.
+- Cuando muestres cambios, en PESOS: "$1.075 -> $1.082". Si pones %, secundario.
+
+Datos del dia:
 - Productos actualizados: {len(updated_items)}
-- Marcas mas movidas: {top_brands}
-- Mayores subas (%, producto, marca): {top_hikes}
+- Cambio promedio absoluto: {magnitude['avg_abs_pct']}%
+- Cambio mas grande: {magnitude['max_pct']:+.2f}%
+- Items significativos (>= {NOISE_PCT}%): {magnitude['meaningful_count']}
+- Items de ruido (< {NOISE_PCT}%, redondeo): {magnitude['noise_count']}
+- Top cambios en pesos: {top_changes}
 
-Devolveme exactamente:
-1. Una linea de resumen (que movio hoy y a que tipo de cliente conviene avisar).
-2. 3 a 5 bullets con los cambios concretos mas relevantes (producto + % subio/bajo).
-3. Si hay algo accionable obvio (re-cotizar, avisar a un rubro), una linea final.
+{magnitude_block}
 
-Formato: HTML simple solo con <b>negrita</b> y bullets con "• ". Maximo 1200 caracteres.
-Sin introducciones tipo "Hola" ni cierres tipo "Saludos"."""
+Formato: HTML simple solo con <b>negrita</b> y bullets con "• "."""
 
 
 def load_registry():
@@ -320,10 +452,12 @@ def process_tenant_report(tenant):
         body = "Sin novedades hoy. No se detectaron cambios de precios ni productos nuevos."
         provider = "none"
     else:
-        prompt = build_prompt(updated_items, top_brands, top_hikes)
+        magnitude = classify_magnitude(top_hikes)
+        log_metric("magnitude", f"{slug} class={magnitude['class']} avg={magnitude['avg_abs_pct']}%")
+        prompt = build_prompt(updated_items, top_brands, top_hikes, magnitude=magnitude)
         body, provider = get_ai_analysis(prompt)
         if body is None:
-            body = render_template_fallback(updated_items, top_brands, top_hikes, fecha)
+            body = render_template_fallback(updated_items, top_brands, top_hikes, fecha, magnitude=magnitude)
         else:
             body = sanitize_html(body)
 
