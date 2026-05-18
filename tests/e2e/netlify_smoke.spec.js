@@ -94,7 +94,24 @@ for (const tenant of tenants) {
             const [_, yy, mm, dd] = m;
             const fileDate = new Date(`20${yy}-${mm}-${dd}T00:00:00Z`);
             const ageHours = (Date.now() - fileDate.getTime()) / 3600000;
-            expect(ageHours, `${tenant.slug}: data servida es de hace ${ageHours.toFixed(0)}h (>${36}h, el cron no esta deployando)`).toBeLessThan(36);
+
+            // Threshold weekend-aware: el cron es Lun-Sab AR. Domingo no
+            // actualiza, asi que en Lun-mañana la data puede tener hasta ~50h
+            // legitimamente. Toleramos:
+            //   - Domingo: 60h
+            //   - Lunes antes de las 20 AR: 60h
+            //   - resto: 36h
+            // Usamos hora AR (UTC-3) para weekday/hora.
+            const nowAR = new Date(Date.now() - 3 * 3600 * 1000);
+            const arWeekday = nowAR.getUTCDay(); // 0=Dom..6=Sab
+            const arHour = nowAR.getUTCHours();
+            let threshold = 36;
+            if (arWeekday === 0) threshold = 60; // Domingo todo el dia
+            else if (arWeekday === 1 && arHour < 20) threshold = 60; // Lun antes del cron 20:00
+            expect(
+                ageHours,
+                `${tenant.slug}: data servida es de hace ${ageHours.toFixed(0)}h (>${threshold}h, el cron no esta deployando)`
+            ).toBeLessThan(threshold);
         });
     });
 }
