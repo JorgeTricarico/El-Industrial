@@ -6,6 +6,13 @@
       "version": "d6da77d",
       "role_declared": "backup",
       "note": "setup_node.sh role=backup offset=60"
+    },
+    "raspberrypi": {
+      "last_run": "2026-05-17T23:31:51.183098",
+      "last_outcome": "started",
+      "version": "ea13072",
+      "role_declared": "primary",
+      "note": "verificacion post-fix-gitignore"
     }
   }
 }
