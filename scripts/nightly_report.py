@@ -26,10 +26,34 @@ TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 HOST = socket.gethostname()
 
 
+import re as _re
+
+# Patrones de keys conocidas que NUNCA deben aparecer en logs.
+# Defense-in-depth: aunque el codigo evite poner keys en URLs, si un error
+# de tercera-parte las incluye, las redactamos antes de escribir a disco.
+_KEY_PATTERNS = [
+    _re.compile(r"AIzaSy[A-Za-z0-9_-]{33}"),       # Google API keys (Gemini)
+    _re.compile(r"csk-[A-Za-z0-9]{56,}"),           # Cerebras
+    _re.compile(r"key=[A-Za-z0-9_-]{20,}"),         # querystring ?key=...
+    _re.compile(r"Bearer\s+[A-Za-z0-9_.\-]{20,}"),  # Authorization headers
+    _re.compile(r"\d{9,10}:AA[A-Za-z0-9_-]{20,}"),  # Telegram bot token
+    _re.compile(r"nfp_[A-Za-z0-9]{20,}"),           # Netlify personal token
+]
+
+
+def _scrub_secrets(text):
+    """Reemplaza cualquier secreto detectado por <REDACTED>."""
+    s = str(text)
+    for pat in _KEY_PATTERNS:
+        s = pat.sub("<REDACTED>", s)
+    return s
+
+
 def log_metric(event, detail=""):
     """Append a structured event to status/metrics.jsonl."""
     os.makedirs(STATUS_DIR, exist_ok=True)
-    entry = {"ts": datetime.now().isoformat(), "node": HOST, "event": event, "detail": str(detail)[:500]}
+    safe_detail = _scrub_secrets(detail)[:500]
+    entry = {"ts": datetime.now().isoformat(), "node": HOST, "event": event, "detail": safe_detail}
     try:
         with open(os.path.join(STATUS_DIR, "metrics.jsonl"), "a", encoding="utf-8") as f:
             f.write(json.dumps(entry, ensure_ascii=False) + "\n")
@@ -40,12 +64,17 @@ def log_metric(event, detail=""):
 def call_gemini(prompt):
     if not GEMINI_API_KEY:
         raise RuntimeError("GEMINI_API_KEY ausente")
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite-preview:generateContent?key={GEMINI_API_KEY}"
+    # SEGURIDAD: la API key va por HEADER (x-goog-api-key), no en el URL.
+    # Antes la metiamos en ?key=... y cuando requests lanzaba HTTPError, el
+    # mensaje incluia el URL completo con la key. Eso se loggeaba en
+    # metrics.jsonl y podia filtrarse. Header keeps it out of error strings.
+    url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite-preview:generateContent"
+    headers = {"x-goog-api-key": GEMINI_API_KEY, "Content-Type": "application/json"}
     payload = {"contents": [{"parts": [{"text": prompt}]}]}
     last_err = None
     for attempt in range(3):
         try:
-            res = requests.post(url, json=payload, timeout=40)
+            res = requests.post(url, json=payload, headers=headers, timeout=40)
             if res.status_code == 429:
                 wait = (attempt + 1) * 10
                 log_metric("llm_rate_limit", f"gemini attempt={attempt} wait={wait}s")
