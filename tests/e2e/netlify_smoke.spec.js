@@ -86,6 +86,14 @@ for (const tenant of tenants) {
         });
 
         test(`${tenant.slug}: pointer publico apunta a archivo de hoy o ayer`, async ({ page, request }) => {
+            // Tenants en state=testing usan supplier stub (sin fetch real). Su
+            // data es la del root mirror que solo se actualiza si update_products
+            // corre en root — cosa que ya NO pasa post-M1. Por eso saltamos el
+            // chequeo de freshness para testing tenants. El chequeo de "carga y
+            // contenido" SI corre arriba.
+            test.skip(tenant.state === 'testing',
+                `tenant '${tenant.slug}' es testing/stub, data no se actualiza por design`);
+
             const res = await request.get(`${tenant.netlify_url}/latest-json-filename.txt`);
             expect(res.ok(), `${tenant.slug}: latest-json-filename.txt no responde`).toBeTruthy();
             const txt = (await res.text()).trim();
