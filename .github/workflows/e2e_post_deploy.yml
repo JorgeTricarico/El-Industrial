@@ -54,10 +54,14 @@ jobs:
           retention-days: 14
 
       - name: Alerta Telegram al admin si fallo
-        if: failure()
+        # Solo en cron real (schedule). Si dispare manual (workflow_dispatch),
+        # ya estoy mirando el resultado yo mismo — no spamear el chat por
+        # iteraciones de debug. Aplica el mismo principio en healthcheck/audit.
+        if: failure() && github.event_name == 'schedule'
         env:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          # Preferir canal tecnico si esta configurado, sino comercial (legacy).
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_TECH_CHAT_ID || secrets.TELEGRAM_CHAT_ID }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           MSG="🔴 <b>E2E post-deploy FALLO</b>%0A%0AAlgun sitio publico de cliente no funciona como debe.%0A%0ARun: ${RUN_URL}%0A%0AAccion: revisar el artifact playwright-report del run para ver screenshots de los fallos."
