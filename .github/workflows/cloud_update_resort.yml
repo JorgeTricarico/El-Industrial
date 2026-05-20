@@ -1,0 +1,192 @@
+name: "Cloud Update Resort"
+
+# Ultimo recurso para actualizar precios cuando todos los nodos locales
+# (Pi + WSL + Mint) cayeron y no hay update real del dia en el repo.
+# Cascada:
+#   Plan A: SSH a Pi via Tailscale -> bash scripts/run_daily.sh remoto.
+#           (Reusa la ruta probada; Pi llega a Bertual sin problemas.)
+#   Plan B: Bertual directo desde el runner con timeout extendido y retries.
+#           (Workaround a "Bertual timeout 30s desde GH runners" del 18-may.)
+#   Plan C: Salir 0 y dejar que failover.yml mande filler "supplier_down".
+#
+# Bug del 18-20 may: Pi quedo trabada con .gz untracked + dedup engañado por
+# filler commits. Mientras tanto el cloud SOLO mandaba filler aunque podia
+# (con suficiente cuidado) actualizar precios reales. Este workflow cierra
+# ese hueco.
+
+on:
+  schedule:
+    # 02:00 UTC = 23:00 AR. 30min ANTES de failover.yml (02:30 UTC).
+    # Si lograramos actualizar, failover.yml encuentra data fresca y solo
+    # manda el Telegram normal en vez del filler.
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+
+env:
+  TZ: America/Argentina/Buenos_Aires
+
+jobs:
+  attempt-update:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write  # requerido por tailscale OAuth
+    env:
+      # Exponemos los secrets como env para poder usarlos en `if:` conditions
+      # (en if no se pueden leer secrets.* directamente, hay que pasar por env).
+      TS_OAUTH_CLIENT_ID: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+      TS_OAUTH_SECRET: ${{ secrets.TS_OAUTH_SECRET }}
+      PI_SSH_KEY: ${{ secrets.PI_SSH_KEY }}
+      BERTUAL_CUIT: ${{ secrets.BERTUAL_CUIT }}
+      BERTUAL_PASSWORD: ${{ secrets.BERTUAL_PASSWORD }}
+      BERTUAL_CLIENT_ID: ${{ secrets.BERTUAL_CLIENT_ID }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+        with:
+          # Token con permiso de push para commitear data fresca
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Skip si ya hay update real hoy
+        id: check
+        run: |
+          set -e
+          FILE_DATE=$(date +%y-%m-%d)
+          TODAY_TAG="[run:$FILE_DATE]"
+          REAL=$(git log origin/main --format=%s -30 | \
+            grep -F "$TODAY_TAG" | grep -c "^Actualizacion automatica" || true)
+          echo "real_update_today=$REAL" >> "$GITHUB_OUTPUT"
+          if [ "${REAL:-0}" -gt 0 ]; then
+            echo "Update real ya esta en el repo hoy. Cloud-resort no necesita hacer nada."
+          else
+            echo "No hay update real hoy. Cloud-resort va a intentar."
+          fi
+
+      - name: Install deps
+        if: steps.check.outputs.real_update_today == '0'
+        run: pip install -r requirements.txt
+
+      # ---------------- PLAN A: SSH a Pi via Tailscale ----------------
+      # Solo corre si los 3 secrets TS_* + PI_SSH_KEY estan configurados.
+      # Sin esos secrets, el step se skipea silenciosamente (vars vacias).
+      - name: Plan A — Tailscale up
+        id: ts
+        if: steps.check.outputs.real_update_today == '0' && env.TS_OAUTH_CLIENT_ID != '' && env.TS_OAUTH_SECRET != ''
+        uses: tailscale/github-action@v2
+        with:
+          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
+          tags: tag:ci
+
+      - name: Plan A — SSH a Pi y dispara run_daily.sh
+        id: plan_a
+        if: steps.check.outputs.real_update_today == '0' && steps.ts.outcome == 'success'
+        continue-on-error: true
+        env:
+          PI_HOST: ${{ vars.PI_HOST || '100.112.235.98' }}
+          PI_USER: ${{ vars.PI_USER || 'jorge' }}
+          PI_REPO_PATH: ${{ vars.PI_REPO_PATH || '/home/jorge/El-Industrial' }}
+        run: |
+          set -e
+          if [ -z "$PI_SSH_KEY" ]; then
+            echo "PI_SSH_KEY no configurada — skip Plan A."
+            exit 1
+          fi
+          mkdir -p ~/.ssh
+          echo "$PI_SSH_KEY" > ~/.ssh/pi_id
+          chmod 600 ~/.ssh/pi_id
+          ssh -o StrictHostKeyChecking=accept-new -o ConnectTimeout=15 \
+            -i ~/.ssh/pi_id "$PI_USER@$PI_HOST" \
+            "cd $PI_REPO_PATH && rm -f /tmp/el_industrial.lock && bash scripts/run_daily.sh" 2>&1
+          # El propio run_daily.sh commitea + pushea desde la Pi, no hace falta hacerlo aca
+
+      - name: Plan A — verificar que pusheo data fresca
+        id: plan_a_verify
+        if: steps.plan_a.outcome == 'success'
+        run: |
+          set -e
+          # Re-fetch y ver si aparecio el "Actualizacion automatica" de hoy
+          git fetch origin main
+          FILE_DATE=$(date +%y-%m-%d)
+          TODAY_TAG="[run:$FILE_DATE]"
+          REAL=$(git log origin/main --format=%s -30 | \
+            grep -F "$TODAY_TAG" | grep -c "^Actualizacion automatica" || true)
+          if [ "${REAL:-0}" -gt 0 ]; then
+            echo "plan_a_done=true" >> "$GITHUB_OUTPUT"
+            echo "Plan A: Pi actualizo precios y pusheo. OK."
+          else
+            echo "plan_a_done=false" >> "$GITHUB_OUTPUT"
+            echo "Plan A: la Pi corrio pero no pusheo update real. Caemos a Plan B."
+            exit 1
+          fi
+
+      # ---------------- PLAN B: Bertual directo desde el runner ----------------
+      - name: Plan B — update_products en el runner con timeout extendido
+        id: plan_b
+        if: steps.check.outputs.real_update_today == '0' && steps.plan_a_verify.outputs.plan_a_done != 'true'
+        continue-on-error: true
+        env:
+          # Timeout 90s + 3 reintentos. Workaround a la latencia GH-Actions->Bertual.
+          BERTUAL_TIMEOUT: '90'
+          BERTUAL_RETRIES: '3'
+          BERTUAL_CUIT: ${{ secrets.BERTUAL_CUIT }}
+          BERTUAL_PASSWORD: ${{ secrets.BERTUAL_PASSWORD }}
+          BERTUAL_CLIENT_ID: ${{ secrets.BERTUAL_CLIENT_ID }}
+          NETLIFY_TOKEN: ${{ secrets.NETLIFY_TOKEN }}
+        run: |
+          set -e
+          # Falla si no hay creds — el step skipea via outcome=failure (continue-on-error: true).
+          [ -n "$BERTUAL_CUIT" ] && [ -n "$BERTUAL_PASSWORD" ] && [ -n "$BERTUAL_CLIENT_ID" ] || {
+            echo "BERTUAL_* secrets faltantes. Skip Plan B."
+            exit 1
+          }
+          python3 scripts/update_products.py
+          python3 scripts/sync_tenants.py
+
+      - name: Plan B — commit + push data fresca
+        id: plan_b_commit
+        if: steps.plan_b.outcome == 'success'
+        run: |
+          set -e
+          FILE_DATE=$(date +%y-%m-%d)
+          TODAY_TAG="[run:$FILE_DATE]"
+          git config user.name "GitHub Action Cloud-Resort"
+          git config user.email "actions@github.com"
+          # Whitelist: solo los archivos que update_products + sync_tenants tocan.
+          # NO usamos `git add .` para no incluir basura del runner.
+          git add \
+            data/ \
+            tenants/*/data/ \
+            tenants/*/latest-json-filename.txt \
+            tenants/*/latest-json-filename.json \
+            latest-json-filename.txt \
+            latest-json-filename.json \
+            status/heartbeat.json \
+            2>/dev/null || true
+          if git diff --cached --quiet; then
+            echo "Sin cambios para commitear (peer ya estaba al dia)."
+            exit 0
+          fi
+          git commit -m "Actualizacion automatica de precios: $(date +%d/%m/%Y) [cloud-resort] $TODAY_TAG [skip ci]"
+          # Pull-rebase por si la Pi pusheo entremedio
+          git pull --rebase origin main || true
+          git push origin HEAD:main
+
+      - name: Resultado
+        if: always()
+        run: |
+          if [ "${{ steps.check.outputs.real_update_today }}" != "0" ]; then
+            echo "::notice::Update real ya estaba en repo. Cloud-resort no actuo."
+          elif [ "${{ steps.plan_a_verify.outputs.plan_a_done }}" = "true" ]; then
+            echo "::notice::Plan A (SSH Pi via Tailscale) actualizo precios OK."
+          elif [ "${{ steps.plan_b.outcome }}" = "success" ]; then
+            echo "::notice::Plan B (Bertual directo desde runner) actualizo precios OK."
+          else
+            echo "::warning::Cloud-resort no pudo actualizar. failover.yml mandara filler en 30min."
+          fi
