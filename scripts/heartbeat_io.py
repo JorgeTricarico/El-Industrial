@@ -103,6 +103,15 @@ def tenant_last_telegram(status_dir, slug):
     return (hb.get("tenants") or {}).get(slug, {}).get("last_telegram_iso", "")
 
 
+def tenant_last_telegram_provider(status_dir, slug):
+    """Devuelve el provider del ultimo envio para este tenant, o ''.
+    Sirve para distinguir filler_* de provider real (gemini/cerebras/...)
+    en la logica de dedup: un update real debe poder superceder a un filler
+    enviado mas temprano el mismo dia."""
+    hb = read(status_dir)
+    return (hb.get("tenants") or {}).get(slug, {}).get("last_telegram_provider", "")
+
+
 def already_sent_today(status_dir, slug, today_str):
     """True si el tenant ya recibio un Telegram hoy.
     today_str: 'YYYY-MM-DD' en zona horaria local (la del proceso, que en

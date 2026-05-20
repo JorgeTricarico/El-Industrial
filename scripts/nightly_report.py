@@ -540,6 +540,11 @@ def process_tenant_report(tenant):
     # Dedupe per-tenant: si ya mandamos Telegram para este tenant hoy
     # (cualquier nodo del cluster), no mandar de nuevo. force=True saltea
     # el chequeo (usado por E2E test).
+    # EXCEPCION: si el envio previo de HOY fue un filler (supplier_down /
+    # no_changes / weekly_deadman) Y AHORA tenemos accum real, permitimos
+    # superseder. Caso real del 20-may: cloud mando filler 03:32 AR porque
+    # la Pi todavia no habia actualizado; Pi corrio 12:55 con 4 productos
+    # nuevos y el dedup la bloqueo -> cliente no se entero del update real.
     force = tenant.get("_force_send", False)
     if not force:
         try:
@@ -549,9 +554,20 @@ def process_tenant_report(tenant):
             today_str = datetime.now().strftime("%Y-%m-%d")
             if heartbeat_io.already_sent_today(STATUS_DIR, slug, today_str):
                 last = heartbeat_io.tenant_last_telegram(STATUS_DIR, slug)
-                log_metric("nightly_dup_skip", f"{slug}: ya enviado hoy ({last})")
-                result["status"] = "dup_skip"
-                return result
+                last_provider = heartbeat_io.tenant_last_telegram_provider(STATUS_DIR, slug)
+                # Hay accum real ahora?
+                tenant_status_dir_dedup = os.path.join(TENANTS_DIR, slug, "status")
+                accum_path_dedup = os.path.join(tenant_status_dir_dedup, "daily_accum.json")
+                have_real_accum = os.path.exists(accum_path_dedup)
+                last_was_filler = (last_provider or "").startswith("filler_")
+                if last_was_filler and have_real_accum:
+                    log_metric("nightly_dedup_override",
+                               f"{slug}: superseding {last_provider} con update real")
+                    # fall through: no dup_skip
+                else:
+                    log_metric("nightly_dup_skip", f"{slug}: ya enviado hoy ({last})")
+                    result["status"] = "dup_skip"
+                    return result
         except Exception as e:
             log_metric("dedupe_check_fail", f"{type(e).__name__}: {e}")
 

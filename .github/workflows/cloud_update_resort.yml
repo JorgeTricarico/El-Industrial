@@ -46,6 +46,11 @@ jobs:
         with:
           # Token con permiso de push para commitear data fresca
           token: ${{ secrets.GITHUB_TOKEN }}
+          # fetch-depth: 0 = full history. Necesario para que el check
+          # "git log origin/main -30" detecte commits de "Actualizacion
+          # automatica" hechos por otros nodos del cluster hoy. Con
+          # depth=1 (default) solo veriamos HEAD y el skip no dispararia.
+          fetch-depth: 0
 
       - name: Setup Python
         uses: actions/setup-python@v5

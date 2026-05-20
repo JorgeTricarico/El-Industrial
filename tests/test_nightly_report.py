@@ -438,6 +438,57 @@ def test_dedupe_force_send_bypasses_check(tmp_path, monkeypatch):
     assert res["status"] != "dup_skip"
 
 
+@patch("nightly_report.call_gemini", return_value="MENSAJE LLM")
+@patch("nightly_report.send_telegram", return_value=True)
+def test_real_update_supersedes_earlier_filler(mock_send, mock_gemini, tmp_path, monkeypatch):
+    """Bug del 20-may 2026: cloud mando filler 03:32 AR -> Pi corrio 12:55
+    con accum real -> dedup bloqueo y cliente NO se entero del update.
+    Fix: si el envio previo de hoy fue filler_* Y ahora hay accum real,
+    permitir superseder."""
+    import heartbeat_io
+    # Estado: filler ya enviado hoy
+    today_iso = datetime.now().isoformat()
+    heartbeat_io.update_telegram(str(tmp_path), "filler_supplier_down", today_iso, slug="t1")
+
+    # AHORA aparece accum real con cambios
+    tenant_dir = tmp_path / "tenants" / "t1" / "status"
+    tenant_dir.mkdir(parents=True)
+    (tenant_dir / "daily_accum.json").write_text(
+        '{"updated":{"P1":{"name":"Producto X","old":"100","new":"110"}}, "new":{}}'
+    )
+    (tmp_path / "tenants" / "t1" / "config").mkdir(parents=True)
+    (tmp_path / "tenants" / "t1" / "config" / "clients.yml").write_text(
+        "tenant_name: T1\nclients:\n  - name: dev\n    role: admin\n    chat_id: 1\n"
+    )
+
+    monkeypatch.setattr(nightly_report, "STATUS_DIR", str(tmp_path))
+    monkeypatch.setattr(nightly_report, "TENANTS_DIR", str(tmp_path / "tenants"))
+
+    res = nightly_report.process_tenant_report({"slug": "t1", "state": "active"})
+    assert res["status"] != "dup_skip", f"Filler debio ser superseded por update real. res={res}"
+    assert res["sent"] is True, f"Debio mandar el update real. res={res}"
+
+
+@patch("nightly_report.send_telegram", return_value=True)
+def test_real_update_does_NOT_supersede_real_send(mock_send, tmp_path, monkeypatch):
+    """Caso negativo: si el envio previo fue real (gemini/cerebras/etc),
+    el dedup sigue bloqueando aunque tengamos accum nuevo. Evita doble
+    Telegram en el mismo dia ante dos corridas reales del cluster."""
+    import heartbeat_io
+    today_iso = datetime.now().isoformat()
+    heartbeat_io.update_telegram(str(tmp_path), "gemini", today_iso, slug="t1")
+
+    tenant_dir = tmp_path / "tenants" / "t1" / "status"
+    tenant_dir.mkdir(parents=True)
+    (tenant_dir / "daily_accum.json").write_text('{"updated":{"P1":{"new":"1"}}, "new":{}}')
+
+    monkeypatch.setattr(nightly_report, "STATUS_DIR", str(tmp_path))
+    monkeypatch.setattr(nightly_report, "TENANTS_DIR", str(tmp_path / "tenants"))
+
+    res = nightly_report.process_tenant_report({"slug": "t1", "state": "active"})
+    assert res["status"] == "dup_skip"
+
+
 # ============ P1: QUIET SKIP DIA VACIO ============
 
 def test_quiet_skip_when_recent_send_and_zero_items(tmp_path, monkeypatch):

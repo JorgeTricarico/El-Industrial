@@ -220,18 +220,25 @@ def check_tenant(tenant):
         )
         return (slug, problems)
 
-    # 2) Fecha del filename: debe ser HOY o ayer (no mas de 26h)
-    import re
-    m = re.search(r"(\d{2}-\d{2}-\d{2})", local_fname)
-    if m:
-        yy, mm, dd = m.group(1).split("-")
-        try:
-            file_date = datetime.strptime(f"20{yy}-{mm}-{dd}", "%Y-%m-%d")
-            age_h = (datetime.now() - file_date).total_seconds() / 3600
-            if age_h > 26:
-                problems.append(f"{slug}: data servida es del {file_date.date()} ({age_h:.0f}h atras). Update_products no esta corriendo o no escribe al tenant.")
-        except ValueError:
-            pass
+    # 2) Fecha del filename: debe ser HOY o ayer (no mas de 26h).
+    # SKIP para state=testing: estos tenants pueden tener supplier stub
+    # (sin API real) o estar pausados como demo. El freshness check seria
+    # falso positivo. Mismo skip que hace tests/e2e/netlify_smoke (commit
+    # 219c97f). Otros checks (pointer, bytes) siguen aplicando.
+    if state == "testing":
+        pass  # no freshness check
+    else:
+        import re
+        m = re.search(r"(\d{2}-\d{2}-\d{2})", local_fname)
+        if m:
+            yy, mm, dd = m.group(1).split("-")
+            try:
+                file_date = datetime.strptime(f"20{yy}-{mm}-{dd}", "%Y-%m-%d")
+                age_h = (datetime.now() - file_date).total_seconds() / 3600
+                if age_h > 26:
+                    problems.append(f"{slug}: data servida es del {file_date.date()} ({age_h:.0f}h atras). Update_products no esta corriendo o no escribe al tenant.")
+            except ValueError:
+                pass
 
     # 3) Bytes del .gz publico == bytes locales? Parseamos siempre para tener
     # public_parsed disponible para el check de proveedor abajo.
