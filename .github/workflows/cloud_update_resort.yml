@@ -132,14 +132,18 @@ jobs:
           fi
 
       # ---------------- PLAN B: Bertual directo desde el runner ----------------
-      - name: Plan B — update_products en el runner con timeout extendido
+      - name: Plan B — update_products en el runner (best-effort)
         id: plan_b
         if: steps.check.outputs.real_update_today == '0' && steps.plan_a_verify.outputs.plan_a_done != 'true'
         continue-on-error: true
+        timeout-minutes: 2  # Fail-fast: si Bertual sigue bloqueando IPs GH, no quemar runner.
         env:
-          # Timeout 90s + 3 reintentos. Workaround a la latencia GH-Actions->Bertual.
-          BERTUAL_TIMEOUT: '90'
-          BERTUAL_RETRIES: '3'
+          # PROBADO 2026-05-20: timeout-after-90s × 4 attempts × ambos calls = 18 min runtime
+          # y falla con TCP timeout. Bertual firewallea las IPs de GH Actions.
+          # Dejamos Plan B con 30s × 1 intento (~30s real) como safety net por si algun
+          # dia abren las IPs. La ruta real es Plan A (SSH Pi via Tailscale).
+          BERTUAL_TIMEOUT: '30'
+          BERTUAL_RETRIES: '0'
           BERTUAL_CUIT: ${{ secrets.BERTUAL_CUIT }}
           BERTUAL_PASSWORD: ${{ secrets.BERTUAL_PASSWORD }}
           BERTUAL_CLIENT_ID: ${{ secrets.BERTUAL_CLIENT_ID }}
