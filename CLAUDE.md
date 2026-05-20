@@ -266,6 +266,10 @@ spamear el mismo problema; ahora lo silencia.
 
 `MASTER_PROMPT.md` en la raíz tiene el backlog priorizado. Cuando el user diga *"continuá con el master prompt"* (o equivalente), abrirlo y tomar el primer item `status: pending` no bloqueado. Cada item lleva scope + acceptance. Cuando se cierra: status → completed, fecha, sha del commit.
 
+## Estado vivo del sistema
+
+`SYSTEM_STATE.md` en la raíz mantiene la foto del sistema: qué nodos están activos, qué gaps abiertos hay con sus workarounds, último deploy verificado, heurísticas frágiles que no romper. **Cualquier agente que toque el sistema lee SYSTEM_STATE.md ANTES de empezar y lo actualiza ANTES de cerrar la PR.** No es opcional — sin esto la próxima sesión vuelve a hacer el diagnóstico que vos ya hiciste.
+
 ## Antes de mergear
 
 1. `pytest tests/` verde.
