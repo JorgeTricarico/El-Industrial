@@ -96,7 +96,7 @@ def call_cerebras(prompt):
         raise RuntimeError("CEREBRAS_API_KEY ausente")
     url = "https://api.cerebras.ai/v1/chat/completions"
     headers = {"Authorization": f"Bearer {CEREBRAS_API_KEY}", "Content-Type": "application/json"}
-    payload = {"model": "qwen-2.5-72b", "messages": [{"role": "user", "content": prompt}]}
+    payload = {"model": "qwen-3-235b-a22b-instruct-2507", "messages": [{"role": "user", "content": prompt}]}
     res = requests.post(url, json=payload, headers=headers, timeout=30)
     res.raise_for_status()
     text = res.json()["choices"][0]["message"]["content"].strip()

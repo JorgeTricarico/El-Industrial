@@ -41,8 +41,12 @@ cd "$PROJECT_ROOT" || exit
 # --- Auto-pull: siempre ejecutar la ultima version del codigo ---
 # Hacemos pull --rebase --autostash antes que cualquier otra logica para que
 # todos los nodos arranquen con el mismo arbol que main en GitHub.
-# Si el pull falla (conflicto, no hay internet), seguimos con lo que haya
-# para no romper la corrida nocturna; el healthcheck nos avisara.
+# Si el pull falla (conflicto con archivo untracked, divergencia, no hay net):
+# ABORTAMOS. La version vieja del codigo puede tener bugs ya parcheados y, peor,
+# el dedup commit-marker puede confundir con commits posteriores y hacer
+# dup_skip falso. Mejor no correr que correr con codigo stale.
+# Lección 19-may-2026: la Pi corrio 2 dias con .gz untracked bloqueando pull
+# y siempre vio el commit-marker [run:YY-MM-DD] del cloud filler -> dup_skip.
 log_message "Auto-pull: git pull --rebase --autostash origin main..."
 if git pull --rebase --autostash origin main --quiet 2>>"$LOG_FILE"; then
     NEW_HEAD=$(git rev-parse --short HEAD 2>/dev/null)
@@ -52,7 +56,14 @@ if git pull --rebase --autostash origin main --quiet 2>>"$LOG_FILE"; then
     # alertaba por "drift de version" como falso positivo.
     python3 "$SCRIPT_DIR/refresh_heartbeat.py" >>"$LOG_FILE" 2>&1 || true
 else
-    log_message "ADVERTENCIA: git pull fallo, continuando con codigo local."
+    log_message "CRITICO: git pull fallo. Abortando corrida con codigo stale."
+    # Pulso pull_fail (sin venv, usando system python como fallback)
+    if [ -f "$PULSE_PY" ]; then
+        PY_BIN="${VENV_PATH}/bin/python"
+        [ -x "$PY_BIN" ] || PY_BIN="python3"
+        "$PY_BIN" "$PULSE_PY" --outcome "pull_fail" --note "git pull --rebase --autostash fallo" >>"$LOG_FILE" 2>&1 || true
+    fi
+    exit 2
 fi
 
 # --- Pulso del nodo: arrancamos. Siempre pulsea aunque la corrida no haga trabajo util.
@@ -87,14 +98,21 @@ if [ -f "$REQ_FILE" ] && [ -d "$VENV_PATH" ]; then
     fi
 fi
 
-# --- Dedup remoto vía commit-marker ---
-# Cualquier nodo (Pi, Mint o GH Actions) marca su corrida con el tag [run:YY-MM-DD]
-# en el commit. Antes de ejecutar, verificamos si ya hay un commit de hoy.
+# --- Dedup remoto vía commit-marker (DISCRIMINADO) ---
+# Cualquier nodo (Pi, Mint o GH Actions) marca su corrida con el tag [run:YY-MM-DD].
+# PERO: el cloud last_resort + watchdogs commitean con el mismo tag aunque solo
+# manden filler Telegram SIN actualizar precios. Si tomamos cualquier [run:YY-MM-DD]
+# como "ya actualizado", el filler engaña al primary y nos quedamos sin precios.
+# Lección 19/20-may-2026: cloud filler commit -> Pi vio el tag -> dup_skip -> 2 dias
+# sin actualizar precios en prod.
+# Regla: solo cuentan commits cuyo subject empieza con "Actualizacion automatica"
+# (los commits reales de update_products). Fillers/pulses se ignoran.
 TODAY_TAG="[run:$FILE_DATE]"
-LAST_COMMIT_MSG=$(git log origin/main --format=%s -5 2>/dev/null || echo "")
-if echo "$LAST_COMMIT_MSG" | grep -qF "$TODAY_TAG"; then
-    log_message "Otro nodo ya ejecuto hoy ($TODAY_TAG). Pulso dup_skip y salgo."
-    pulse "dup_skip" "commit-marker $TODAY_TAG ya presente"
+REAL_UPDATE_TODAY=$(git log origin/main --format=%s -20 2>/dev/null | \
+    grep -F "$TODAY_TAG" | grep -c "^Actualizacion automatica" || true)
+if [ "${REAL_UPDATE_TODAY:-0}" -gt 0 ]; then
+    log_message "Otro nodo ya actualizo precios hoy ($TODAY_TAG). Pulso dup_skip y salgo."
+    pulse "dup_skip" "commit-marker $TODAY_TAG con update real ya presente"
     # Push del heartbeat asi otros nodos ven el pulso.
     git add status/heartbeat.json 2>/dev/null || true
     if ! git diff --cached --quiet 2>/dev/null; then
