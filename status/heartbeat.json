@@ -1,12 +1,12 @@
 {
   "nodes": {
     "DESKTOP-MI43BOU": {
-      "last_run": "2026-05-18T21:00:34.068015",
-      "last_outcome": "updated",
-      "version": "576e0e0",
+      "last_run": "2026-05-20T21:00:02.887379",
+      "last_outcome": "dup_skip",
+      "version": "5d23a99",
       "role_declared": "backup",
-      "note": "update_products+nightly OK",
-      "last_pulled_iso": "2026-05-18T21:00:03.063282",
+      "note": "commit-marker [run:26-05-20] con update real ya presente",
+      "last_pulled_iso": "2026-05-20T21:00:02.768787",
       "status": "ok",
       "duration_s": 3.47
     },
