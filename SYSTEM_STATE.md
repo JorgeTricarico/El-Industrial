@@ -17,11 +17,11 @@
 
 ## Última actualización
 
-- **Fecha:** 2026-05-20
+- **Fecha:** 2026-05-21
 - **Agente:** Claude Opus 4.7 (sesión de Jorge)
-- **Commit head al cierre:** `3f85890`
+- **Commit head al cierre:** `c07cc55` (Pi auto) + cambios en esta PR
 - **Tests:** 180 ✅
-- **Producción:** verde — `el-industrial.netlify.app` sirve `lista_precio_26-05-20`.
+- **Producción:** verde — `el-industrial.netlify.app` sirve `lista_precio_26-05-21` (106 updates + 1 new fetcheados 08:31 AR).
 
 ---
 
@@ -29,7 +29,7 @@
 
 | hostname           | rol                | online    | last_run AR        | last_telegram_iso       | notas |
 |--------------------|--------------------|-----------|--------------------|-------------------------|-------|
-| raspberrypi        | primary            | ✅ vía TS | 2026-05-20 12:54  | 2026-05-20 (real send)  | Cron `0 20,22 * * 1-6`. Pulled fix de dedup. |
+| raspberrypi        | primary            | ✅ vía TS | 2026-05-21 08:31  | 2026-05-21 (real send)  | Cron `0 10,20,22 * * 1-6`. 10:00 agregado 2026-05-21. |
 | DESKTOP-MI43BOU    | backup             | ⚠️ WSL    | 2026-05-18 21:00  | —                       | Cron `0 0 * * 1-6` UTC. Dispara solo si Windows despierto. |
 | rv420              | backup             | ✅ vía TS | nunca             | —                       | `pending_onboard`. Sin repo clonado todavía. |
 | linux-mint         | backup             | ❌        | hace 10+ días     | —                       | Offline en Tailscale. Cuando vuelva, bumpear a `active`. |
@@ -74,6 +74,12 @@
 - **Workaround actual:** Pi cubre como primary. WSL es backup ocasional.
 - **Cierre del gap:** o tarea programada de Windows que despierte WSL, o aceptarlo y depender de Pi + cloud-resort.
 
+### G5 — Inconsistencia crontab Pi vs nodes.yml (menor)
+
+- **Síntoma:** la entrada de las 10:00 AR en la Pi tiene weekday `1-6` (Lun-Sab), pero las de 20:00 y 22:00 corren todos los días (sin restricción). `nodes.yml` declara `1-6` para todas.
+- **Workaround actual:** ninguno; las corridas de Domingo a 20:00/22:00 hacen `dup_skip` o filler-quiet si no hay accum, sin daño real.
+- **Cierre del gap:** `ssh jorge@raspberrypi 'crontab -e'` y alinear las 3 entradas a `1-6`. Trivial pero requiere acción manual del user.
+
 ### G4 — `demo-electricidad` con supplier stub
 
 - **Síntoma:** `tenants/demo-electricidad` queda con data vieja y antes alertaba falsos positivos.
@@ -86,6 +92,7 @@
 
 > Solo cambios que afectan operación. Detalles en git log.
 
+- **2026-05-21** Pi crontab: agregado `0 10 * * 1-6` (10:00 AR Lun-Sab). Cierra gap G5: cliente abre temprano y ve precios del día. Antes solo corría 20:00 + 22:00 AR.
 - **2026-05-20** `3f85890` Plan B (Bertual desde runner) fail-fast 30s — probado que no funciona, IPs GH bloqueadas.
 - **2026-05-20** `3c526c4` Dedup nightly_report permite update real supersede filler. Fix post_deploy_check testing-tenant. Cloud-resort checkout depth=0.
 - **2026-05-20** `5e4da6c` Workflow nuevo `cloud_update_resort.yml`. Bertual API timeout/retries configurables. Tests retries + dedup discriminado.

@@ -21,7 +21,7 @@
 nodes:
   - hostname: raspberrypi
     role: primary
-    cron: "0 20,22 * * 1-6"        # Lun-Sab 20:00 y 22:00 AR
+    cron: "0 10,20,22 * * 1-6"     # Lun-Sab 10:00, 20:00, 22:00 AR. 10:00 agregado 2026-05-21 (cliente abre temprano).
     location: "Tailscale 100.112.235.98"
     can_fetch_supplier: true
     can_push_github: true
