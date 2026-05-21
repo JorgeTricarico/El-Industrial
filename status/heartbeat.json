@@ -11,14 +11,14 @@
       "duration_s": 3.47
     },
     "raspberrypi": {
-      "last_run": "2026-05-21T10:00:04.469895",
+      "last_run": "2026-05-21T20:00:04.716662",
       "last_outcome": "dup_skip",
-      "version": "134e9fa",
+      "version": "b79129e",
       "role_declared": "primary",
       "note": "commit-marker [run:26-05-21] con update real ya presente",
       "status": "ok",
       "duration_s": 9.16,
-      "last_pulled_iso": "2026-05-21T10:00:03.718125"
+      "last_pulled_iso": "2026-05-21T20:00:03.911851"
     }
   },
   "last_telegram_iso": "2026-05-21T08:31:55.652193",
