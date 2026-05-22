@@ -21,16 +21,16 @@
       "last_pulled_iso": "2026-05-21T22:00:03.471082"
     }
   },
-  "last_telegram_iso": "2026-05-21T08:31:55.652193",
-  "last_telegram_provider": "gemini",
+  "last_telegram_iso": "2026-05-22T03:31:16.338079",
+  "last_telegram_provider": "filler_supplier_down",
   "tenants": {
     "demo-electricidad": {
       "last_telegram_iso": "2026-05-17T23:32:46.506435",
       "last_telegram_provider": "sambanova"
     },
     "el-industrial": {
-      "last_telegram_iso": "2026-05-21T08:31:55.652193",
-      "last_telegram_provider": "gemini"
+      "last_telegram_iso": "2026-05-22T03:31:16.338079",
+      "last_telegram_provider": "filler_supplier_down"
     }
   }
 }
