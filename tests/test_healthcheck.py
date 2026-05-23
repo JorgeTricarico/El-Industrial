@@ -253,6 +253,69 @@ tenants:
     assert problems == []
 
 
+@patch('healthcheck.requests.get')
+def test_sitio_publico_skip_tenants_testing(mock_get, tmp_path, monkeypatch):
+    """Tenants en estado testing no se chequean: su data es estatica por diseno."""
+    monkeypatch.setattr(healthcheck, "BASE_DIR", str(tmp_path))
+    _write_registry(tmp_path, """
+tenants:
+  - slug: demo-electricidad
+    state: testing
+    netlify_url: "https://demo-electricidad.netlify.app"
+""")
+    problems = healthcheck.detect_public_site_stale()
+    assert problems == []
+    mock_get.assert_not_called()
+
+
+@patch('healthcheck.requests.get')
+def test_sitio_publico_ayer_no_genera_falso_positivo(mock_get, tmp_path, monkeypatch):
+    """Archivo de ayer no debe alertar si tiene < 26h desde el ultimo deploy posible.
+
+    El cron corre hasta las 22:00 AR. Un archivo de ayer tiene como maximo
+    (now - ayer_22:00) horas reales de stale. Sin el +20h este test fallaria
+    cuando el runner de GH Actions arranca despues de las ~02:00 AR.
+    """
+    from datetime import datetime, timedelta
+    # Fijamos 'now' a las 03:00 AR del dia siguiente al archivo → simula el
+    # runner de GH Actions llegando tarde. Sin +20h seria 27h stale (falso
+    # positivo); con +20h es 7h stale → OK.
+    fake_now = datetime(2026, 5, 23, 3, 0, 0)
+    monkeypatch.setattr(healthcheck, "datetime", type("_DT", (), {"now": staticmethod(lambda: fake_now), "strptime": datetime.strptime})())
+    mock_resp = MagicMock(ok=True, text="data/lista_precio_26-05-22_json_compres.gz")
+    mock_get.return_value = mock_resp
+    monkeypatch.setattr(healthcheck, "BASE_DIR", str(tmp_path))
+    _write_registry(tmp_path, """
+tenants:
+  - slug: el-industrial
+    state: active
+    netlify_url: "https://el-industrial.netlify.app"
+""")
+    problems = healthcheck.detect_public_site_stale()
+    assert problems == [], f"Falso positivo con dato de ayer: {problems}"
+
+
+@patch('healthcheck.requests.get')
+def test_sitio_publico_anteayer_si_alerta(mock_get, tmp_path, monkeypatch):
+    """Archivo de anteayer (genuinamente stale, > 26h desde ultimo deploy) si alerta."""
+    from datetime import datetime
+    # 03:00 AR del 23/05, archivo del 21/05. effective_deploy=21/05 20:00.
+    # age_h = (23/05 03:00) - (21/05 20:00) = 31h > 26h → debe alertar.
+    fake_now = datetime(2026, 5, 23, 3, 0, 0)
+    monkeypatch.setattr(healthcheck, "datetime", type("_DT", (), {"now": staticmethod(lambda: fake_now), "strptime": datetime.strptime})())
+    mock_resp = MagicMock(ok=True, text="data/lista_precio_26-05-21_json_compres.gz")
+    mock_get.return_value = mock_resp
+    monkeypatch.setattr(healthcheck, "BASE_DIR", str(tmp_path))
+    _write_registry(tmp_path, """
+tenants:
+  - slug: el-industrial
+    state: active
+    netlify_url: "https://el-industrial.netlify.app"
+""")
+    problems = healthcheck.detect_public_site_stale()
+    assert any("el-industrial" in p and "deploy a Netlify NO esta llegando" in p for p in problems), problems
+
+
 # ============ STALE TOLERANCE LUN-SAB ============
 
 def test_expected_stale_hours_lunes_temprano_tolera_weekend(monkeypatch):

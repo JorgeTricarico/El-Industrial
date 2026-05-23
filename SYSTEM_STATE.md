@@ -17,11 +17,11 @@
 
 ## Última actualización
 
-- **Fecha:** 2026-05-21
-- **Agente:** Claude Opus 4.7 (sesión de Jorge)
-- **Commit head al cierre:** `c07cc55` (Pi auto) + cambios en esta PR
-- **Tests:** 180 ✅
-- **Producción:** verde — `el-industrial.netlify.app` sirve `lista_precio_26-05-21` (106 updates + 1 new fetcheados 08:31 AR).
+- **Fecha:** 2026-05-23
+- **Agente:** Claude Sonnet 4.6 (sesión de Jorge)
+- **Commit head al cierre:** ver git log
+- **Tests:** 183 ✅
+- **Producción:** verde — `el-industrial.netlify.app` sirviendo data del 22/05. Pi corrió 23/05 10:00 AR (2 nuevos productos).
 
 ---
 
@@ -82,8 +82,8 @@
 
 ### G4 — `demo-electricidad` con supplier stub
 
-- **Síntoma:** `tenants/demo-electricidad` queda con data vieja y antes alertaba falsos positivos.
-- **Workaround actual:** `state: testing` + post_deploy_check skipea freshness (fix 2026-05-20).
+- **Síntoma:** `tenants/demo-electricidad` queda con data vieja por diseño (sin supplier real).
+- **Workaround actual:** `state: testing` → `post_deploy_check` y `healthcheck.detect_public_site_stale` skipean freshness (fix 2026-05-23).
 - **Cierre del gap:** cuando consigamos cliente real para Electrónica Haedo, implementar el supplier de verdad y bumpear a `active`.
 
 ---
@@ -92,6 +92,7 @@
 
 > Solo cambios que afectan operación. Detalles en git log.
 
+- **2026-05-23** `healthcheck.detect_public_site_stale`: skip tenants testing + edad medida desde `file_date+20h` en vez de medianoche. Elimina falso positivo diario donde el runner de GH Actions (2-3h tarde) reportaba "deploy no llegando" aunque el deploy era reciente.
 - **2026-05-21** Pi crontab: agregado `0 10 * * 1-6` (10:00 AR Lun-Sab). Cierra gap G5: cliente abre temprano y ve precios del día. Antes solo corría 20:00 + 22:00 AR.
 - **2026-05-20** `3f85890` Plan B (Bertual desde runner) fail-fast 30s — probado que no funciona, IPs GH bloqueadas.
 - **2026-05-20** `3c526c4` Dedup nightly_report permite update real supersede filler. Fix post_deploy_check testing-tenant. Cloud-resort checkout depth=0.

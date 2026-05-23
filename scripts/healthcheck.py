@@ -221,16 +221,24 @@ def _expected_stale_hours(now=None):
 
 
 def detect_public_site_stale():
-    """Para cada tenant active/testing en _registry.yml, fetch su pointer publico
-    (https://<url>/latest-json-filename.txt) y compara con el pointer local del
-    repo. Si el publico apunta a un archivo mas viejo que el umbral, alerta.
+    """Para cada tenant active en _registry.yml, fetch su pointer publico
+    (https://<url>/latest-json-filename.txt) y verifica que no sea obsoleto.
 
     Umbral default 26h, pero Domingo y Lunes-antes-de-las-20 se relaja a 50h
     porque el cron es Lun-Sab (no actualiza Domingo).
 
+    La edad se mide desde file_date + 20h en vez de medianoche: el Pi puede
+    correr hasta las 22:00 AR, asi que el archivo mas nuevo de un dia tiene
+    como minimo 20h de gracia. Sin esto, cualquier archivo con fecha de ayer
+    parece 26h+ stale al amanecer aunque el deploy fue reciente.
+
+    Tenants state=testing se saltean: su data es estatica por diseno y no
+    representan un fallo de deploy (cubre el falso positivo de demo-electricidad).
+
     Esto cubre el bug del 27/04-17/05 donde el sitio sirvio data congelada
     porque los deploys de Netlify fallaban silenciosamente.
     """
+    from datetime import timedelta
     threshold_h = _expected_stale_hours()
     problems = []
     registry = os.path.join(BASE_DIR, "tenants", "_registry.yml")
@@ -246,7 +254,7 @@ def detect_public_site_stale():
     except (OSError, yaml.YAMLError):
         return problems
     for t in data.get("tenants", []):
-        if t.get("state") not in ("active", "testing"):
+        if t.get("state") != "active":
             continue
         url = t.get("netlify_url", "")
         if not url.startswith("http"):
@@ -270,11 +278,14 @@ def detect_public_site_stale():
             file_date = datetime.strptime(f"20{yy}-{mm}-{dd}", "%Y-%m-%d")
         except ValueError:
             continue
-        age_h = (datetime.now() - file_date).total_seconds() / 3600
+        # +20h: el Pi corre hasta las 22:00 AR; medir desde medianoche
+        # genera falsos positivos cuando GH Actions arranca tarde al dia siguiente.
+        effective_deploy = file_date + timedelta(hours=20)
+        age_h = max(0, (datetime.now() - effective_deploy).total_seconds() / 3600)
         if age_h > threshold_h:
             problems.append(
                 f"Sitio publico {t.get('slug')} sirve data del {file_date.date()} "
-                f"({age_h:.0f}h atras, umbral hoy {threshold_h:.0f}h). "
+                f"({age_h:.0f}h desde ultimo deploy posible, umbral hoy {threshold_h:.0f}h). "
                 "El deploy a Netlify NO esta llegando."
             )
     return problems
