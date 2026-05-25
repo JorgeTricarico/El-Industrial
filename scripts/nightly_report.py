@@ -170,6 +170,7 @@ def render_template_fallback(updated_items, top_brands, top_hikes, fecha, magnit
     ]
     for c in top_changes[:n_bullets]:
         lines.append(f"• {c['name']}: pasó de ${c['old']:.2f} a ${c['new']:.2f}")
+        lines.append("")
     if cls == "strong":
         lines.append("")
         lines.append("<i>Conviene chequear precios pasados a clientes antes de facturar.</i>")
@@ -418,7 +419,7 @@ Datos del dia:
 
 {magnitude_block}
 
-Formato: HTML simple solo con <b>negrita</b> y bullets con "• "."""
+Formato: HTML simple solo con <b>negrita</b> y bullets con "• ". OBLIGATORIO: Separá CADA PÁRRAFO Y CADA BULLET con una línea en blanco (doble salto de línea) para reducir la fatiga visual al leer."""
 
 
 def load_registry():
