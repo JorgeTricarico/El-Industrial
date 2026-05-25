@@ -399,7 +399,8 @@ Reglas duras (no negociables):
 - TONO: coloquial argentino, directo. Como un amigo del local que sabe del
   rubro. Hablale de "vos", no de "usted".
 - PROHIBIDO: "critico", "alarmante", "riesgo", "historico", "masivo",
-  "sin precedentes". Sin emojis de alarma. Maximo 📌 al inicio.
+  "sin precedentes". Sin emojis exagerados. 
+- EMOJI INICIAL: Usá 🟢 para días tranquilos/leves, 🟡 para normales, y 🔴 para fuertes. Opcionalmente un 📌. Nada más.
 - MOSTRAR CAMBIOS EN PESOS EN LENGUAJE NATURAL: "pasó de $1.075 a $1.082". 
   Prohibido usar flechas matemáticas como "->" o "→". El % es complemento, va
   entre parentesis si entra.
