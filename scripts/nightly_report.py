@@ -243,6 +243,16 @@ def _send_tech_alert(text):
         except requests.RequestException:
             pass
 
+    # AIOps: Invoke unattended remediation agent if this is a technical alert (not an info log)
+    if "⚠️" in text or "error" in text.lower() or "fail" in text.lower() or "falla" in text.lower():
+        try:
+            import subprocess, sys
+            aiops_script = os.path.join(SCRIPT_DIR, "aiops_remediate.py")
+            if os.path.exists(aiops_script):
+                subprocess.Popen([sys.executable, aiops_script, text], start_new_session=True)
+        except Exception:
+            pass
+
 
 def send_telegram(message, clients_path=None):
     """Broadcast a destinatarios habilitados como report (admin + client).
@@ -660,6 +670,15 @@ def process_tenant_report(tenant):
     else:
         magnitude = classify_magnitude(top_hikes)
         log_metric("magnitude", f"{slug} class={magnitude['class']} avg={magnitude['avg_abs_pct']}%")
+
+        if magnitude["class"] == "negligible" and not force:
+            log_metric("nightly_quiet_skip", f"{slug}: cambios negligible, no se notifica")
+            _send_tech_alert(f"ℹ️ Info ({slug}): Día tranquilo (cambios insignificantes). No se notificó al cliente para evitar ruido.")
+            result["status"] = "quiet_skip"
+            if not no_accum_filler and os.path.exists(accum_path):
+                _archive_accum(accum_path, tenant_status_dir)
+            return result
+
         prompt = build_prompt(updated_items, top_brands, top_hikes, magnitude=magnitude)
         body, provider = get_ai_analysis(prompt)
         if body is None:
