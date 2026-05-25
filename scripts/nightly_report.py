@@ -5,7 +5,7 @@ Cadena: Gemini 3.1 Flash-Lite -> Cerebras Qwen 2.5 72B -> Groq Llama 3.3 70B -> 
 La plantilla garantiza que SIEMPRE llega un mensaje a Telegram aunque caigan los 3 LLMs.
 """
 import os, json, requests, time, socket
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 from dotenv import load_dotenv
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -620,7 +620,7 @@ def process_tenant_report(tenant):
         no_accum_filler = False
 
     top_brands, top_hikes = _compute_stats(updated_items)
-    now = datetime.now()
+    now = datetime.now(timezone(timedelta(hours=-3)))
     fecha = now.strftime("%d/%m/%Y")
     hora = now.strftime("%H:%M")
 
