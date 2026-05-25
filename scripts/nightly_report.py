@@ -169,7 +169,7 @@ def render_template_fallback(updated_items, top_brands, top_hikes, fecha, magnit
         "",
     ]
     for c in top_changes[:n_bullets]:
-        lines.append(f"• {c['name']}: ${c['old']:.2f} → ${c['new']:.2f}")
+        lines.append(f"• {c['name']}: pasó de ${c['old']:.2f} a ${c['new']:.2f}")
     if cls == "strong":
         lines.append("")
         lines.append("<i>Conviene chequear precios pasados a clientes antes de facturar.</i>")
@@ -222,6 +222,25 @@ def _send_to_chat(chat_id, message, name=""):
     except requests.RequestException as e:
         log_metric("telegram_plain_fail", f"{name}({chat_id}) {type(e).__name__}: {e}")
     return False
+
+def _send_tech_alert(text):
+    """Envia alerta tecnica al chat de admin/dev."""
+    if not TELEGRAM_TOKEN:
+        return
+    try:
+        import clients as _c
+    except ImportError:
+        return
+    legacy = os.getenv("TELEGRAM_CHAT_ID")
+    recipients = _c.recipients_for("alert", legacy_chat_id=legacy)
+    if not recipients:
+        return
+    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
+    for chat_id, _name in recipients:
+        try:
+            requests.post(url, data={"chat_id": chat_id, "text": text, "parse_mode": "HTML"}, timeout=15)
+        except requests.RequestException:
+            pass
 
 
 def send_telegram(message, clients_path=None):
@@ -380,7 +399,8 @@ Reglas duras (no negociables):
   rubro. Hablale de "vos", no de "usted".
 - PROHIBIDO: "critico", "alarmante", "riesgo", "historico", "masivo",
   "sin precedentes". Sin emojis de alarma. Maximo 📌 al inicio.
-- MOSTRAR CAMBIOS EN PESOS: "$1.075 -> $1.082". El % es complemento, va
+- MOSTRAR CAMBIOS EN PESOS EN LENGUAJE NATURAL: "pasó de $1.075 a $1.082". 
+  Prohibido usar flechas matemáticas como "->" o "→". El % es complemento, va
   entre parentesis si entra.
 - MAXIMO 600 caracteres (mensaje breve).
 - Sin "Hola" ni "Saludos". Directo al grano.
@@ -607,32 +627,30 @@ def process_tenant_report(tenant):
     body = None
     provider = None
 
-    if no_accum_filler:
-        # No hay accum AND es dia garantizado (o force): mensaje supplier_down.
-        body = _filler_body("supplier_down")
-        provider = "filler_supplier_down"
-    elif len(updated_items) == 0 and len(new_items) == 0:
-        # Dia totalmente vacio.
-        if guaranteed or force:
-            # Lun-Sab: SIEMPRE envia algo (garantia).
+    if no_accum_filler or (len(updated_items) == 0 and len(new_items) == 0):
+        if no_accum_filler and not force:
+            _send_tech_alert(f"⚠️ Alerta Técnica ({slug}): Sin daily_accum.json. El mayorista no respondió o el cron falló.")
+
+        try:
+            import sys as _sys
+            _sys.path.insert(0, SCRIPT_DIR)
+            import heartbeat_io
+            days = heartbeat_io.days_since_last_telegram(STATUS_DIR, slug)
+        except Exception:
+            days = None
+            
+        if force:
             body = _filler_body("no_changes")
             provider = "filler_no_changes"
-        else:
-            # Domingo: skip salvo dead-man semanal.
-            try:
-                import sys as _sys
-                _sys.path.insert(0, SCRIPT_DIR)
-                import heartbeat_io
-                days = heartbeat_io.days_since_last_telegram(STATUS_DIR, slug)
-            except Exception:
-                days = None
-            if days is not None and days < 7:
-                log_metric("nightly_quiet_skip", f"{slug}: domingo vacio, ultimo envio hace {days}d")
-                result["status"] = "quiet_skip"
-                _archive_accum(accum_path, tenant_status_dir)
-                return result
+        elif days is None or days >= 7:
             body = _filler_body("weekly_deadman", days_since=days)
             provider = "deadman"
+        else:
+            log_metric("nightly_quiet_skip", f"{slug}: sin novedades, ultimo envio hace {days}d")
+            result["status"] = "quiet_skip"
+            if not no_accum_filler and os.path.exists(accum_path):
+                _archive_accum(accum_path, tenant_status_dir)
+            return result
     elif len(updated_items) == 0:
         # solo productos nuevos (sin cambios de precio)
         body = f"Entraron {len(new_items)} producto(s) nuevo(s) a la lista. Sin cambios de precios."

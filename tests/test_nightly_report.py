@@ -130,7 +130,7 @@ def test_template_fallback_con_datos_reales():
     msg = nightly_report.render_template_fallback(updated, [], top_hikes, "17/05/2026")
     assert "7 producto" in msg
     assert "$100" in msg and "$108" in msg
-    assert "→" in msg or "->" in msg
+    assert "pasó de" in msg or " a $" in msg
 
 
 def test_classify_magnitude_negligible():
@@ -279,31 +279,39 @@ def test_process_tenant_report_skips_inactive(mock_ai, mock_send, tmp_path, monk
     assert not mock_send.called
 
 
+@patch('nightly_report._send_tech_alert')
 @patch('nightly_report.send_telegram')
 @patch('nightly_report.get_ai_analysis')
-def test_process_tenant_report_no_accum_on_domingo_skips(mock_ai, mock_send, tmp_path, monkeypatch):
-    """Domingo + sin accum -> no enviar. Lun-Sab garantiza filler (otro test)."""
+def test_process_tenant_report_no_accum_skips(mock_ai, mock_send, mock_alert, tmp_path, monkeypatch):
+    """Sin accum -> tech alert (si corresponde) y quiet skip."""
+    import heartbeat_io
+    yesterday = (datetime.now() - timedelta(days=1)).isoformat()
+    heartbeat_io.update_telegram(str(tmp_path / "status"), "gemini", yesterday, slug="alpha")
     monkeypatch.setattr(nightly_report, "TENANTS_DIR", str(tmp_path / "tenants"))
-    monkeypatch.setattr(nightly_report, "_is_guaranteed_day", lambda *a, **kw: False)
+    monkeypatch.setattr(nightly_report, "STATUS_DIR", str(tmp_path / "status"))
     res = nightly_report.process_tenant_report({"slug": "alpha", "state": "active"})
-    assert res["status"] == "no_accum"
+    assert res["status"] == "quiet_skip"
     assert not mock_send.called
 
 
+@patch('nightly_report._send_tech_alert')
 @patch('nightly_report.send_telegram', return_value=True)
-def test_process_tenant_report_no_accum_on_workday_sends_filler(mock_send, tmp_path, monkeypatch):
-    """Lun-Sab + sin accum -> manda filler 'supplier_down'."""
+def test_process_tenant_report_no_accum_on_workday_sends_tech_alert_and_skips(mock_send, mock_alert, tmp_path, monkeypatch):
+    """Sin accum -> tech alert al dev + quiet_skip para el cliente."""
+    import heartbeat_io
+    yesterday = (datetime.now() - timedelta(days=1)).isoformat()
+    heartbeat_io.update_telegram(str(tmp_path / "status"), "gemini", yesterday, slug="alpha")
+
     tenants_dir = tmp_path / "tenants"
     (tenants_dir / "alpha").mkdir(parents=True)
     monkeypatch.setattr(nightly_report, "TENANTS_DIR", str(tenants_dir))
     monkeypatch.setattr(nightly_report, "STATUS_DIR", str(tmp_path / "status"))
-    monkeypatch.setattr(nightly_report, "_is_guaranteed_day", lambda *a, **kw: True)
     res = nightly_report.process_tenant_report({"slug": "alpha", "state": "active"})
-    assert res["status"] == "ok"
-    assert res["provider"] == "filler_supplier_down"
-    assert mock_send.called
-    body = mock_send.call_args[0][0]
-    assert "no respondio" in body.lower() or "no actualizo" in body.lower()
+    assert res["status"] == "quiet_skip"
+    assert not mock_send.called
+    assert mock_alert.called
+    body = mock_alert.call_args[0][0]
+    assert "Sin daily_accum.json" in body
 
 
 @patch('nightly_report.send_telegram', return_value=True)
@@ -527,21 +535,21 @@ def test_quiet_skip_on_sunday_with_yesterday_send(tmp_path, monkeypatch):
 
 
 @patch('nightly_report.send_telegram', return_value=True)
-def test_workday_empty_accum_sends_filler(mock_send, tmp_path, monkeypatch):
-    """Lun-Sab + accum vacio -> SIEMPRE manda filler 'no_changes'."""
+def test_workday_empty_accum_quiet_skips(mock_send, tmp_path, monkeypatch):
+    """Lun-Sab + accum vacio -> quiet_skip (silencio es salud)."""
+    import heartbeat_io
+    yesterday = (datetime.now() - timedelta(days=1)).isoformat()
+    heartbeat_io.update_telegram(str(tmp_path), "gemini", yesterday, slug="t1")
+
     tenant_dir = tmp_path / "tenants" / "t1" / "status"
     tenant_dir.mkdir(parents=True)
     (tenant_dir / "daily_accum.json").write_text('{"updated":{}, "new":{}}')
 
     monkeypatch.setattr(nightly_report, "STATUS_DIR", str(tmp_path))
     monkeypatch.setattr(nightly_report, "TENANTS_DIR", str(tmp_path / "tenants"))
-    monkeypatch.setattr(nightly_report, "_is_guaranteed_day", lambda *a, **kw: True)
     res = nightly_report.process_tenant_report({"slug": "t1", "state": "active"})
-    assert res["status"] == "ok"
-    assert res["provider"] == "filler_no_changes"
-    assert mock_send.called
-    body = mock_send.call_args[0][0]
-    assert "sin cambios" in body.lower() or "no hubo cambios" in body.lower()
+    assert res["status"] == "quiet_skip"
+    assert not mock_send.called
 
 
 def test_deadman_when_no_send_in_7_days_on_sunday(tmp_path, monkeypatch):

@@ -102,6 +102,7 @@ sistema produce" → "lo que el cliente ve"**.
 
 ### Cómo se implementa hoy
 
+- `scripts/e2e_telegram_simulate.py`: Simula un cambio de 1 centavo en un producto real y ejecuta el pipeline de reportes para validar la entrega en Telegram. Obligatorio correrlo tras modificar scripts del backend.
 - `scripts/post_deploy_check.py`: compara data local Pi ↔ web publica ↔
   Bertual API (3 niveles, tolerancia 1%, 10 precios random). Corre tras
   cada cron en la Pi.

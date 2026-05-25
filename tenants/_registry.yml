@@ -32,6 +32,7 @@ tenants:
   - slug: demo-electricidad
     name: "Demo Electricidad (placeholder: 'Tu Empresa Aquí')"
     state: testing
+    audit_netlify: false
     netlify_url: "https://demo-electricidad.netlify.app"
     netlify_site_id: "0d1ebe3c-6d84-49ba-a62d-64bc0c4e38a4"
     supplier: "Electronica Haedo"

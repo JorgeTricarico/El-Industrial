@@ -288,6 +288,8 @@ def check_netlify_build_settings(tenants, token=None):
     problems = []
     headers = {"Authorization": f"Bearer {token}"}
     for t in tenants:
+        if t.get("audit_netlify") is False:
+            continue
         slug = t.get("slug", "?")
         site_id = t.get("netlify_site_id")
         if not site_id:
