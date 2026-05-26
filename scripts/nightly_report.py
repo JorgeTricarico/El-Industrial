@@ -15,7 +15,7 @@ ENV_FILE = os.path.join(BASE_DIR, ".env")
 TENANTS_DIR = os.path.join(BASE_DIR, "tenants")
 REGISTRY = os.path.join(TENANTS_DIR, "_registry.yml")
 
-load_dotenv(ENV_FILE)
+load_dotenv(ENV_FILE, override=True)
 
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 CEREBRAS_API_KEY = os.getenv("CEREBRAS_API_KEY")
@@ -68,7 +68,7 @@ def call_gemini(prompt):
     # Antes la metiamos en ?key=... y cuando requests lanzaba HTTPError, el
     # mensaje incluia el URL completo con la key. Eso se loggeaba en
     # metrics.jsonl y podia filtrarse. Header keeps it out of error strings.
-    url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite-preview:generateContent"
+    url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent"
     headers = {"x-goog-api-key": GEMINI_API_KEY, "Content-Type": "application/json"}
     payload = {"contents": [{"parts": [{"text": prompt}]}]}
     last_err = None

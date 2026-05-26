@@ -19,7 +19,7 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 BASE_DIR = os.path.dirname(SCRIPT_DIR)
 STATUS_DIR = os.path.join(BASE_DIR, "status")
 ENV_FILE = os.path.join(BASE_DIR, ".env")
-load_dotenv(ENV_FILE)
+load_dotenv(ENV_FILE, override=True)
 
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")

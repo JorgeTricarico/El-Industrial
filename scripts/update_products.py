@@ -36,7 +36,7 @@ REGISTRY = os.path.join(TENANTS_DIR, "_registry.yml")
 STATUS_DIR = os.path.join(BASE_DIR, "status")
 ENV_FILE = os.path.join(BASE_DIR, ".env")
 
-load_dotenv(ENV_FILE)
+load_dotenv(ENV_FILE, override=True)
 
 sys.path.insert(0, SCRIPT_DIR)
 import suppliers  # noqa: E402
@@ -112,7 +112,7 @@ def fetch_with_retries(supplier, creds):
             last_err = f"respuesta corta o vacia (len={len(data) if data else 0})"
         except Exception as e:
             last_err = f"{type(e).__name__}: {e}"
-        time.sleep(2 ** i)
+        time.sleep(10 * (2 ** i))
     print(f"[{supplier.name}] agotados 3 intentos: {last_err}", file=sys.stderr)
     return None, 0
 

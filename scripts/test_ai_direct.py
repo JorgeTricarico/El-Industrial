@@ -1,13 +1,15 @@
 import os, json, requests
 from dotenv import load_dotenv
-load_dotenv('/home/jorge/El-Industrial/.env')
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+BASE_DIR = os.path.dirname(SCRIPT_DIR)
+load_dotenv(os.path.join(BASE_DIR, '.env'), override=True)
 
 GEMINI_API_KEY = os.getenv('GEMINI_API_KEY')
 TELEGRAM_TOKEN = os.getenv('TELEGRAM_TOKEN')
 TELEGRAM_CHAT_ID = os.getenv('TELEGRAM_CHAT_ID')
 
 def get_ai_summary(changes):
-    model_name = 'gemini-3.1-flash-lite-preview'
+    model_name = 'gemini-3.1-flash-lite'
     url = f'https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={GEMINI_API_KEY}'
     prompt = f'Eres un experto analista. Resume estos cambios de precios para el dueño en 3 puntitos breves: {json.dumps(changes)}. Sé breve.'
     payload = {'contents': [{'parts': [{'text': prompt}]}]}

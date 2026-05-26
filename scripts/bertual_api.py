@@ -8,14 +8,14 @@ from dotenv import load_dotenv
 # Automatically load local .env if external scripts bypass main runners
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 ENV_FILE = os.path.join(BASE_DIR, ".env")
-load_dotenv(ENV_FILE)
+load_dotenv(ENV_FILE, override=True)
 
 
 # Timeout y reintentos configurables. Default 30s suficiente en LAN/Pi.
 # Para GH Actions runners (latencia mas alta + posible firewall), exportar
 # BERTUAL_TIMEOUT=90 y BERTUAL_RETRIES=3 al lanzar update_products.
-DEFAULT_TIMEOUT = int(os.getenv("BERTUAL_TIMEOUT", "30"))
-DEFAULT_RETRIES = int(os.getenv("BERTUAL_RETRIES", "1"))
+DEFAULT_TIMEOUT = int(os.getenv("BERTUAL_TIMEOUT", "45"))
+DEFAULT_RETRIES = int(os.getenv("BERTUAL_RETRIES", "2"))
 
 
 class BertualAPIClient:
