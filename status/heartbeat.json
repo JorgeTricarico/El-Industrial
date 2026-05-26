@@ -1,14 +1,14 @@
 {
   "nodes": {
     "DESKTOP-MI43BOU": {
-      "last_run": "2026-05-24T21:00:03.519431",
-      "last_outcome": "dup_skip",
-      "version": "2406315",
+      "last_run": "2026-05-26T00:00:30.904432",
+      "last_outcome": "supplier_fail",
+      "version": "5fa1f81",
       "role_declared": "backup",
-      "note": "commit-marker [run:26-05-24] con update real ya presente",
-      "last_pulled_iso": "2026-05-24T21:00:03.364359",
-      "status": "ok",
-      "duration_s": 3.47
+      "note": "update_products exit=1",
+      "last_pulled_iso": "2026-05-26T00:00:01.182280",
+      "status": "api_fail",
+      "duration_s": 29.39
     },
     "raspberrypi": {
       "last_run": "2026-05-25T22:00:04.352420",
@@ -21,12 +21,12 @@
       "last_pulled_iso": "2026-05-25T22:00:03.579387"
     }
   },
-  "last_telegram_iso": "2026-05-25T10:00:41.463534",
-  "last_telegram_provider": "filler_no_changes",
+  "last_telegram_iso": "2026-05-25T20:35:29.850397",
+  "last_telegram_provider": "cerebras",
   "tenants": {
     "demo-electricidad": {
-      "last_telegram_iso": "2026-05-17T23:32:46.506435",
-      "last_telegram_provider": "sambanova"
+      "last_telegram_iso": "2026-05-25T20:35:29.850397",
+      "last_telegram_provider": "cerebras"
     },
     "el-industrial": {
       "last_telegram_iso": "2026-05-25T10:00:41.463534",
