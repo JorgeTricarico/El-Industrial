@@ -14,8 +14,8 @@ load_dotenv(ENV_FILE, override=True)
 # Timeout y reintentos configurables. Default 30s suficiente en LAN/Pi.
 # Para GH Actions runners (latencia mas alta + posible firewall), exportar
 # BERTUAL_TIMEOUT=90 y BERTUAL_RETRIES=3 al lanzar update_products.
-DEFAULT_TIMEOUT = int(os.getenv("BERTUAL_TIMEOUT", "45"))
-DEFAULT_RETRIES = int(os.getenv("BERTUAL_RETRIES", "2"))
+DEFAULT_TIMEOUT = int(os.getenv("BERTUAL_TIMEOUT", "30"))
+DEFAULT_RETRIES = int(os.getenv("BERTUAL_RETRIES", "1"))
 
 
 class BertualAPIClient:
