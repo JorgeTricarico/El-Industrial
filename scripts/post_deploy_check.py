@@ -34,7 +34,7 @@ SAMPLE_SIZE = 5
 sys.path.insert(0, SCRIPT_DIR)
 import requests  # noqa: E402
 from dotenv import load_dotenv  # noqa: E402
-load_dotenv(os.path.join(BASE_DIR, ".env"))
+load_dotenv(os.path.join(BASE_DIR, ".env"), override=True)
 
 
 def load_tenants():
