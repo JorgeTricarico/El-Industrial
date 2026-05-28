@@ -96,7 +96,9 @@ Empeza con: "🤖 <b>AIOps Auto-Diagnostico</b>"."""
 
     analysis = call_llm_chain(prompt)
     if analysis:
-        send_telegram(analysis)
+        import nightly_report
+        analysis_safe = nightly_report.sanitize_html(analysis)
+        send_telegram(analysis_safe)
         log_metric("aiops_success", "Analisis generado y enviado.")
         
         # Opcion A: Crear Issue
