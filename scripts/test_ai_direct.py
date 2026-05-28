@@ -1,8 +1,11 @@
-import os, json, requests
+import os, json, requests, sys
 from dotenv import load_dotenv
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 BASE_DIR = os.path.dirname(SCRIPT_DIR)
 load_dotenv(os.path.join(BASE_DIR, '.env'), override=True)
+
+sys.path.insert(0, SCRIPT_DIR)
+from nightly_report import sanitize_html
 
 GEMINI_API_KEY = os.getenv('GEMINI_API_KEY')
 TELEGRAM_TOKEN = os.getenv('TELEGRAM_TOKEN')
@@ -30,7 +33,10 @@ print('Llamando a Gemini 3.1 Flash Lite...')
 summary = get_ai_summary(sample_changes)
 print('Resumen:', summary)
 
-cap = f'🚀 TEST IA (3.1 Flash Lite)\n\n{summary}'
+# Sanitizar a formato HTML de Telegram
+summary_safe = sanitize_html(summary)
+
+cap = f'🚀 TEST IA (3.1 Flash Lite)\n\n{summary_safe}'
 url_tg = f'https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage'
-requests.post(url_tg, data={'chat_id': TELEGRAM_CHAT_ID, 'text': cap})
+requests.post(url_tg, data={'chat_id': TELEGRAM_CHAT_ID, 'text': cap, 'parse_mode': 'HTML'})
 print('Mensaje enviado a Telegram.')
