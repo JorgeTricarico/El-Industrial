@@ -194,19 +194,21 @@ def get_ai_analysis(prompt):
 def sanitize_html(text):
     """Telegram HTML solo permite b, i, u, s, code, pre, a. 
     Convierte Markdown residual a HTML y limpia caracteres prohibidos."""
-    # Convertir **negrita** a <b>negrita</b>
+    # 1. Convertir viñetas de Markdown (* o -) al principio de línea a viñetas estándar (•) primero
+    # Esto evita que los asteriscos de las viñetas interfieran con la regla de cursiva simple.
+    text = _re.sub(r"^[ \t]*[*+-][ \t]+", r"• ", text, flags=_re.MULTILINE)
+    
+    # 2. Convertir **negrita** a <b>negrita</b>
     text = _re.sub(r"\*\*(.*?)\*\*", r"<b>\1</b>", text)
-    # Convertir *cursiva* o _cursiva_ a <i>cursiva</i>
+    
+    # 3. Convertir *cursiva* o _cursiva_ a <i>cursiva</i>
     text = _re.sub(r"\*(.*?)\*", r"<i>\1</i>", text)
     text = _re.sub(r"_(.*?)_", r"<i>\1</i>", text)
     
-    # Convertir viñetas de Markdown (* o -) al principio de línea a viñetas estándar (•)
-    text = _re.sub(r"^[ \t]*[*+-][ \t]+", r"• ", text, flags=_re.MULTILINE)
-    
-    # Limpiar cualquier asterisco o guión bajo residual
+    # 4. Limpiar cualquier asterisco o guión bajo residual
     text = text.replace("*", "").replace("_", "")
     
-    # Quitar emojis prohibidos
+    # 5. Quitar emojis prohibidos
     for forbidden in ("⚠️", "🚨", "🔥", "💥"):
         text = text.replace(forbidden, "")
         
