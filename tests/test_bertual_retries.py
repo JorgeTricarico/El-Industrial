@@ -18,6 +18,8 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "scripts"))
 
 @pytest.fixture
 def bertual_client(monkeypatch):
+    import dotenv
+    monkeypatch.setattr(dotenv, "load_dotenv", lambda *a, **kw: None)
     monkeypatch.setenv("BERTUAL_CUIT", "test_cuit")
     monkeypatch.setenv("BERTUAL_PASSWORD", "test_pwd")
     monkeypatch.setenv("BERTUAL_CLIENT_ID", "test_cid")
@@ -48,18 +50,14 @@ def test_default_timeout_is_30s(bertual_client):
     assert client.retries == 1
 
 
-def test_timeout_overridable_via_env(monkeypatch):
+def test_timeout_overridable_via_env(bertual_client, monkeypatch):
     """El workflow cloud_update_resort exporta BERTUAL_TIMEOUT=90 y RETRIES=3.
     Si esos env vars dejan de leerse, el plan B del workflow se rompe."""
-    monkeypatch.setenv("BERTUAL_CUIT", "x")
-    monkeypatch.setenv("BERTUAL_PASSWORD", "x")
-    monkeypatch.setenv("BERTUAL_CLIENT_ID", "x")
     monkeypatch.setenv("BERTUAL_TIMEOUT", "90")
     monkeypatch.setenv("BERTUAL_RETRIES", "3")
     import importlib
-    import bertual_api
-    importlib.reload(bertual_api)
-    client = bertual_api.BertualAPIClient()
+    importlib.reload(bertual_client)
+    client = bertual_client.BertualAPIClient()
     assert client.timeout == 90
     assert client.retries == 3
 

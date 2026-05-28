@@ -57,6 +57,15 @@ fi
 # Si queremos que el frecuente siga corriendo para capturar telemetría, no lo bloqueamos por fecha.
 # Pero sí debemos evitar que corra si el lock file local existe.
 
+# --- Chequear Reintento Inteligente ---
+# Si la corrida diaria falló hoy por culpa del proveedor y aún no se recuperó,
+# promovemos la ejecución frecuente a una corrida completa diaria (run_daily.sh).
+if python3 "$SCRIPT_DIR/should_retry.py" >> "$LOG_FILE" 2>&1; then
+    log_message "REINTENTO: Detección de fallo previo. Ejecutando ciclo completo diario..."
+    bash "$SCRIPT_DIR/run_daily.sh"
+    exit $?
+fi
+
 # --- Ejecución Silenciosa ---
 if [ -d "$VENV_PATH" ]; then
     source "$VENV_PATH/bin/activate"

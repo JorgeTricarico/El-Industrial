@@ -550,6 +550,27 @@ def _filler_body(reason, days_since=None):
     return "Sistema OK."
 
 
+def _get_tenant_last_api_status(slug):
+    """Devuelve el ultimo 'api' status registrado para este tenant en metrics.jsonl."""
+    metrics_path = os.path.join(STATUS_DIR, "metrics.jsonl")
+    if not os.path.exists(metrics_path):
+        return None
+    try:
+        with open(metrics_path, "r", encoding="utf-8") as f:
+            for line in reversed(f.readlines()):
+                if not line.strip():
+                    continue
+                try:
+                    entry = json.loads(line)
+                    if entry.get("tenant") == slug and "api" in entry:
+                        return entry["api"]
+                except Exception:
+                    pass
+    except Exception:
+        pass
+    return None
+
+
 def process_tenant_report(tenant):
     """Genera y envia el reporte nocturno de UN tenant.
 
@@ -641,7 +662,11 @@ def process_tenant_report(tenant):
 
     if no_accum_filler or (len(updated_items) == 0 and len(new_items) == 0):
         if no_accum_filler and not force:
-            _send_tech_alert(f"⚠️ Alerta Técnica ({slug}): Sin daily_accum.json. El mayorista no respondió o el cron falló.")
+            last_api = _get_tenant_last_api_status(slug)
+            if last_api == "supplier_down":
+                _send_tech_alert(f"⚠️ Alerta Técnica ({slug}): Proveedor caído (Timeout/500 en Bertual/Haedo). El sistema intentará reintentar en las próximas horas.")
+            else:
+                _send_tech_alert(f"⚠️ Alerta Técnica ({slug}): Sin daily_accum.json. El mayorista no respondió o el cron falló.")
 
         try:
             import sys as _sys

@@ -78,7 +78,7 @@ def test_api_resilience_retries(mock_sleep):
         Exception("500"),
         [{"Precio": 100}] * 110,
     ]
-    data, _ = update_products.fetch_with_retries(supplier, creds={})
+    data, _, _ = update_products.fetch_with_retries(supplier, creds={})
     assert len(data) == 110
     assert supplier.fetch_products.call_count == 3
 

@@ -108,6 +108,22 @@ Empeza con: "🤖 <b>AIOps Auto-Diagnostico</b>"."""
             log_metric("aiops_issue_created", gh_out)
         else:
             log_metric("aiops_issue_failed", gh_out)
+            # Fallback local de incidentes
+            try:
+                incidents_dir = os.path.join(STATUS_DIR, "incidents")
+                os.makedirs(incidents_dir, exist_ok=True)
+                import time
+                inc_path = os.path.join(incidents_dir, f"incident_{int(time.time())}.json")
+                with open(inc_path, "w", encoding="utf-8") as f:
+                    json.dump({
+                        "title": issue_title,
+                        "error_msg": error_msg,
+                        "analysis": analysis,
+                        "gh_error": gh_out
+                    }, f, indent=2, ensure_ascii=False)
+                log_metric("aiops_incident_archived", os.path.basename(inc_path))
+            except Exception as e:
+                log_metric("aiops_incident_archive_failed", str(e))
     else:
         log_metric("aiops_failed", "No se pudo obtener analisis del LLM")
 

@@ -163,17 +163,21 @@ PY_EXIT_CODE=$?
 
 if [ $PY_EXIT_CODE -ne 0 ]; then
     log_message "CRÍTICO: update_products fallo con código $PY_EXIT_CODE."
-    pulse "supplier_fail" "update_products exit=$PY_EXIT_CODE"
+    if [ $PY_EXIT_CODE -eq 3 ]; then
+        pulse "supplier_down" "proveedor caido (timeout/500)"
+    else
+        pulse "supplier_fail" "update_products exit=$PY_EXIT_CODE"
+    fi
     # Igual corremos nightly_report: la garantia Lun-Sab mandara filler supplier_down.
     log_message "Corriendo nightly_report para que el filler 'supplier_down' garantice mensaje al cliente..."
     python3 "$SCRIPT_DIR/nightly_report.py" >>"$LOG_FILE" 2>&1 || true
-    # Commit/push del heartbeat (con pulso supplier_fail) para trazabilidad
+    # Commit/push del heartbeat (con pulso supplier_fail/supplier_down) para trazabilidad
     git add status/heartbeat.json 2>/dev/null || true
     if ! git diff --cached --quiet 2>/dev/null; then
-        git commit -m "chore: pulse $HOSTNAME supplier_fail $TODAY_TAG [skip ci]" >>"$LOG_FILE" 2>&1 || true
+        git commit -m "chore: pulse $HOSTNAME fail-$PY_EXIT_CODE $TODAY_TAG [skip ci]" >>"$LOG_FILE" 2>&1 || true
         git push origin HEAD:main >>"$LOG_FILE" 2>&1 || true
     fi
-    exit 1
+    exit $PY_EXIT_CODE
 fi
 
 log_message "Sincronizando tenants (front + data mirror para testing)..."

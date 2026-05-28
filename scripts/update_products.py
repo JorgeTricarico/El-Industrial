@@ -101,20 +101,21 @@ def check_node_status(ip):
 
 
 def fetch_with_retries(supplier, creds):
-    """Llama supplier.fetch_products(creds) con backoff exponencial."""
+    """Llama supplier.fetch_products(creds) con backoff exponencial.
+    Devuelve (data, duration, last_err)."""
     last_err = None
     for i in range(3):
         try:
             t0 = time.time()
             data = supplier.fetch_products(creds)
             if data and len(data) > 100:
-                return data, round(time.time() - t0, 2)
+                return data, round(time.time() - t0, 2), None
             last_err = f"respuesta corta o vacia (len={len(data) if data else 0})"
         except Exception as e:
             last_err = f"{type(e).__name__}: {e}"
         time.sleep(10 * (2 ** i))
     print(f"[{supplier.name}] agotados 3 intentos: {last_err}", file=sys.stderr)
-    return None, 0
+    return None, 0, last_err
 
 
 # -------- helpers per-tenant --------
@@ -295,9 +296,13 @@ def process_tenant(tenant, silent=False):
 
     config = load_tenant_config(slug)
 
-    raw_data, _ = fetch_with_retries(supplier, creds)
+    raw_data, _, err_msg = fetch_with_retries(supplier, creds)
     if not raw_data:
-        result["status"] = "api_fail"
+        if err_msg and any(pat in err_msg.lower() for pat in ["timeout", "i/o timeout", "500", "502", "503", "504", "connection refused", "offline"]):
+            result["status"] = "supplier_down"
+        else:
+            result["status"] = "api_fail"
+        result["error"] = err_msg
         return result
 
     tenant_dir = os.path.join(TENANTS_DIR, slug)
@@ -339,6 +344,7 @@ def main(argv=None):
 
     any_ok = False
     any_fail = False
+    supplier_down_fail = False
     for t in tenants:
         res = process_tenant(t, silent=silent)
         status = res["status"]
@@ -354,6 +360,8 @@ def main(argv=None):
             print(f"[{res['slug']}] FAIL ({status}): {res.get('error', '')}", file=sys.stderr)
             log_metrics(host, status, 0, peer_status, start_ts, tenant_slug=res["slug"])
             any_fail = True
+            if status == "supplier_down":
+                supplier_down_fail = True
 
     duration = time.time() - start_ts
     if any_ok and not any_fail:
@@ -363,8 +371,12 @@ def main(argv=None):
         update_heartbeat(host, status="partial_fail", duration_s=duration)
         return 0  # mantenemos exit 0 si al menos un tenant succeeded
     else:
-        update_heartbeat(host, status="api_fail", duration_s=duration)
-        return 1
+        if supplier_down_fail:
+            update_heartbeat(host, status="supplier_down", duration_s=duration)
+            return 3
+        else:
+            update_heartbeat(host, status="api_fail", duration_s=duration)
+            return 1
 
 
 if __name__ == "__main__":
