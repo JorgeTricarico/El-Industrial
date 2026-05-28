@@ -109,7 +109,13 @@ Empeza con: "🤖 <b>AIOps Auto-Diagnostico</b>"."""
             send_telegram(f"ℹ️ Issue creado automaticamente: {gh_out}")
             log_metric("aiops_issue_created", gh_out)
         else:
-            log_metric("aiops_issue_failed", gh_out)
+            # Si el repo tiene issues deshabilitadas es un error permanente —
+            # loggeamos una sola vez y no retentamos en corridas futuras.
+            if "disabled issues" in gh_out.lower() or "issues are disabled" in gh_out.lower():
+                log_metric("aiops_issues_disabled",
+                           "repo no acepta issues — archivar incidente localmente")
+            else:
+                log_metric("aiops_issue_failed", gh_out)
             # Fallback local de incidentes
             try:
                 incidents_dir = os.path.join(STATUS_DIR, "incidents")

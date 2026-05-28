@@ -298,7 +298,16 @@ def process_tenant(tenant, silent=False):
 
     raw_data, _, err_msg = fetch_with_retries(supplier, creds)
     if not raw_data:
-        if err_msg and any(pat in err_msg.lower() for pat in ["timeout", "i/o timeout", "500", "502", "503", "504", "connection refused", "offline"]):
+        if err_msg and any(pat in err_msg.lower() for pat in [
+            "timeout", "i/o timeout", "500", "502", "503", "504",
+            "connection refused", "offline",
+            "fallo tras",       # wrapper de bertual_api._urlopen_with_retry
+            "urlopen error",    # urllib interno envuelto
+            "remote end closed connection",  # conexion cortada por el servidor
+            "ssl",              # SSL handshake failures
+            "name or service not known",     # DNS failure
+            "network is unreachable",        # sin red
+        ]):
             result["status"] = "supplier_down"
         else:
             result["status"] = "api_fail"
