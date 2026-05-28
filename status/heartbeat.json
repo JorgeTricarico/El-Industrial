@@ -1,14 +1,14 @@
 {
   "nodes": {
     "DESKTOP-MI43BOU": {
-      "last_run": "2026-05-27T00:01:52.064148",
+      "last_run": "2026-05-28T00:01:44.660524",
       "last_outcome": "supplier_fail",
-      "version": "f692e88",
+      "version": "5520f50",
       "role_declared": "backup",
       "note": "update_products exit=1",
-      "last_pulled_iso": "2026-05-27T00:00:03.388811",
+      "last_pulled_iso": "2026-05-28T00:00:02.521372",
       "status": "api_fail",
-      "duration_s": 108.3
+      "duration_s": 101.72
     },
     "raspberrypi": {
       "last_run": "2026-05-27T22:00:04.759670",
