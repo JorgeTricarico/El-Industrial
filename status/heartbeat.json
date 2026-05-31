@@ -1,32 +1,32 @@
 {
   "nodes": {
     "DESKTOP-MI43BOU": {
-      "last_run": "2026-05-28T09:57:41.284989",
-      "last_outcome": "supplier_fail",
-      "version": "d6cef12",
+      "last_run": "2026-05-31T19:13:41.649286",
+      "last_outcome": "finished",
+      "version": "6f5c6f2",
       "role_declared": "backup",
-      "note": "update_products exit=1",
+      "note": "Manual pulse after Gemini key update",
       "last_pulled_iso": "2026-05-28T00:00:02.521372",
       "status": "ok",
       "duration_s": 3.7
     },
     "raspberrypi": {
-      "last_run": "2026-05-30T22:00:04.631803",
-      "last_outcome": "dup_skip",
-      "version": "95f20fa",
+      "last_run": "2026-05-31T19:13:48.635142",
+      "last_outcome": "finished",
+      "version": "d5b33e9",
       "role_declared": "primary",
-      "note": "commit-marker [run:26-05-30] con update real ya presente",
+      "note": "Manual pulse after Gemini key update",
       "status": "ok",
       "duration_s": 9.91,
       "last_pulled_iso": "2026-05-30T22:00:03.797252"
     }
   },
-  "last_telegram_iso": "2026-05-30T10:00:51.614153",
+  "last_telegram_iso": "2026-05-31T19:12:39.180527",
   "last_telegram_provider": "gemini",
   "tenants": {
     "demo-electricidad": {
-      "last_telegram_iso": "2026-05-25T20:35:29.850397",
-      "last_telegram_provider": "cerebras"
+      "last_telegram_iso": "2026-05-31T19:12:39.180527",
+      "last_telegram_provider": "gemini"
     },
     "el-industrial": {
       "last_telegram_iso": "2026-05-30T10:00:51.614153",
