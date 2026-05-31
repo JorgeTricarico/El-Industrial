@@ -61,6 +61,91 @@ def log_metric(event, detail=""):
         print(f"[log_metric] no se pudo escribir metrics.jsonl: {e}")
 
 
+def resolve_latest_model(provider, default_model):
+    """Resuelve dinámicamente el modelo más nuevo disponible si el default no se encuentra
+    o para auto-actualizar modelos deprecados.
+    
+    Referencia oficial de modelos:
+    - Google Gemini: https://ai.google.dev/gemini-api/docs/models?hl=es-419
+    - Cerebras: https://inference-docs.cerebras.ai/llms.txt
+    - SambaNova: https://sambanova-systems.mintlify.dev/docs/llms
+    """
+    # 1. Gemini
+    if provider == "gemini":
+        if not GEMINI_API_KEY:
+            return default_model
+        try:
+            url = "https://generativelanguage.googleapis.com/v1beta/models"
+            headers = {"x-goog-api-key": GEMINI_API_KEY}
+            res = requests.get(url, headers=headers, timeout=10)
+            if res.status_code == 200:
+                models = [m["name"].split("/")[-1] for m in res.json().get("models", [])]
+                if default_model in models:
+                    return default_model
+                # Buscar el modelo más nuevo de la familia flash-lite o flash
+                flash_lite_models = [m for m in models if "flash-lite" in m and not m.endswith("-preview") and not m.endswith("-experimental")]
+                if flash_lite_models:
+                    flash_lite_models.sort(reverse=True)
+                    return flash_lite_models[0]
+                
+                flash_models = [m for m in models if "flash" in m and not m.endswith("-preview")]
+                if flash_models:
+                    flash_models.sort(reverse=True)
+                    return flash_models[0]
+        except Exception as e:
+            print(f"[resolve_latest_model] Error resolviendo Gemini: {e}")
+            
+    # 2. Cerebras
+    elif provider == "cerebras":
+        if not CEREBRAS_API_KEY:
+            return default_model
+        try:
+            url = "https://api.cerebras.ai/v1/models"
+            headers = {"Authorization": f"Bearer {CEREBRAS_API_KEY}"}
+            res = requests.get(url, headers=headers, timeout=10)
+            if res.status_code == 200:
+                models = [m["id"] for m in res.json().get("data", [])]
+                if default_model in models:
+                    return default_model
+                # Buscar alternativas
+                gpt_oss = [m for m in models if "gpt-oss" in m]
+                if gpt_oss:
+                    gpt_oss.sort(reverse=True)
+                    return gpt_oss[0]
+                if models:
+                    return models[0]
+        except Exception as e:
+            print(f"[resolve_latest_model] Error resolviendo Cerebras: {e}")
+            
+    # 3. SambaNova
+    elif provider == "sambanova":
+        if not SAMBANOVA_API_KEY:
+            return default_model
+        try:
+            url = "https://api.sambanova.ai/v1/models"
+            headers = {"Authorization": f"Bearer {SAMBANOVA_API_KEY}"}
+            res = requests.get(url, headers=headers, timeout=10)
+            if res.status_code == 200:
+                models = [m["id"] for m in res.json().get("data", [])]
+                if default_model in models:
+                    return default_model
+                # Buscar alternativas
+                llama_models = [m for m in models if "Llama" in m and "Instruct" in m]
+                if llama_models:
+                    llama_models.sort(reverse=True)
+                    return llama_models[0]
+                deepseek_models = [m for m in models if "DeepSeek" in m]
+                if deepseek_models:
+                    deepseek_models.sort(reverse=True)
+                    return deepseek_models[0]
+                if models:
+                    return models[0]
+        except Exception as e:
+            print(f"[resolve_latest_model] Error resolviendo SambaNova: {e}")
+            
+    return default_model
+
+
 def call_gemini(prompt):
     if not GEMINI_API_KEY:
         raise RuntimeError("GEMINI_API_KEY ausente")
@@ -68,8 +153,11 @@ def call_gemini(prompt):
     # Antes la metiamos en ?key=... y cuando requests lanzaba HTTPError, el
     # mensaje incluia el URL completo con la key. Eso se loggeaba en
     # metrics.jsonl y podia filtrarse. Header keeps it out of error strings.
-    # Model update: 3.1 is the new stable. 2.0 is deprecated.
-    url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent"
+    #
+    # Pagina oficial de referencia para modelos de Gemini:
+    # https://ai.google.dev/gemini-api/docs/models?hl=es-419
+    model_name = resolve_latest_model("gemini", "gemini-3.1-flash-lite")
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent"
     headers = {"x-goog-api-key": GEMINI_API_KEY, "Content-Type": "application/json"}
     payload = {"contents": [{"parts": [{"text": prompt}]}]}
     last_err = None
@@ -103,7 +191,10 @@ def call_cerebras(prompt):
         raise RuntimeError("CEREBRAS_API_KEY ausente")
     url = "https://api.cerebras.ai/v1/chat/completions"
     headers = {"Authorization": f"Bearer {CEREBRAS_API_KEY}", "Content-Type": "application/json"}
-    payload = {"model": "gpt-oss-120b", "messages": [{"role": "user", "content": prompt}]}
+    # Pagina oficial de referencia para modelos de Cerebras:
+    # https://inference-docs.cerebras.ai/llms.txt
+    model_name = resolve_latest_model("cerebras", "gpt-oss-120b")
+    payload = {"model": model_name, "messages": [{"role": "user", "content": prompt}]}
     res = requests.post(url, json=payload, headers=headers, timeout=30)
     res.raise_for_status()
     text = res.json()["choices"][0]["message"]["content"].strip()
@@ -117,7 +208,10 @@ def call_sambanova(prompt):
         raise RuntimeError("SAMBANOVA_API_KEY ausente")
     url = "https://api.sambanova.ai/v1/chat/completions"
     headers = {"Authorization": f"Bearer {SAMBANOVA_API_KEY}", "Content-Type": "application/json"}
-    payload = {"model": "Meta-Llama-3.3-70B-Instruct", "messages": [{"role": "user", "content": prompt}]}
+    # Pagina oficial de referencia para modelos de SambaNova:
+    # https://sambanova-systems.mintlify.dev/docs/llms
+    model_name = resolve_latest_model("sambanova", "Meta-Llama-3.3-70B-Instruct")
+    payload = {"model": model_name, "messages": [{"role": "user", "content": prompt}]}
     res = requests.post(url, json=payload, headers=headers, timeout=30)
     res.raise_for_status()
     text = res.json()["choices"][0]["message"]["content"].strip()

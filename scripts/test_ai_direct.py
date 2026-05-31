@@ -5,14 +5,16 @@ BASE_DIR = os.path.dirname(SCRIPT_DIR)
 load_dotenv(os.path.join(BASE_DIR, '.env'), override=True)
 
 sys.path.insert(0, SCRIPT_DIR)
-from nightly_report import sanitize_html
+from nightly_report import sanitize_html, resolve_latest_model
 
 GEMINI_API_KEY = os.getenv('GEMINI_API_KEY')
 TELEGRAM_TOKEN = os.getenv('TELEGRAM_TOKEN')
 TELEGRAM_CHAT_ID = os.getenv('TELEGRAM_CHAT_ID')
 
 def get_ai_summary(changes):
-    model_name = 'gemini-3.1-flash-lite'
+    # Pagina oficial de referencia para modelos de Gemini:
+    # https://ai.google.dev/gemini-api/docs/models?hl=es-419
+    model_name = resolve_latest_model('gemini', 'gemini-3.1-flash-lite')
     url = f'https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent'
     headers = {'x-goog-api-key': GEMINI_API_KEY, 'Content-Type': 'application/json'}
     prompt = f'Eres un experto analista. Resume estos cambios de precios para el dueño en 3 puntitos breves: {json.dumps(changes)}. Sé breve.'
