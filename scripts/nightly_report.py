@@ -68,7 +68,7 @@ def call_gemini(prompt):
     # Antes la metiamos en ?key=... y cuando requests lanzaba HTTPError, el
     # mensaje incluia el URL completo con la key. Eso se loggeaba en
     # metrics.jsonl y podia filtrarse. Header keeps it out of error strings.
-    url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent"
+    url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent"
     headers = {"x-goog-api-key": GEMINI_API_KEY, "Content-Type": "application/json"}
     payload = {"contents": [{"parts": [{"text": prompt}]}]}
     last_err = None
@@ -96,7 +96,7 @@ def call_cerebras(prompt):
         raise RuntimeError("CEREBRAS_API_KEY ausente")
     url = "https://api.cerebras.ai/v1/chat/completions"
     headers = {"Authorization": f"Bearer {CEREBRAS_API_KEY}", "Content-Type": "application/json"}
-    payload = {"model": "qwen-3-235b-a22b-instruct-2507", "messages": [{"role": "user", "content": prompt}]}
+    payload = {"model": "gpt-oss-120b", "messages": [{"role": "user", "content": prompt}]}
     res = requests.post(url, json=payload, headers=headers, timeout=30)
     res.raise_for_status()
     text = res.json()["choices"][0]["message"]["content"].strip()

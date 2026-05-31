@@ -12,7 +12,7 @@ TELEGRAM_TOKEN = os.getenv('TELEGRAM_TOKEN')
 TELEGRAM_CHAT_ID = os.getenv('TELEGRAM_CHAT_ID')
 
 def get_ai_summary(changes):
-    model_name = 'gemini-3.1-flash-lite'
+    model_name = 'gemini-2.0-flash-lite'
     url = f'https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent'
     headers = {'x-goog-api-key': GEMINI_API_KEY, 'Content-Type': 'application/json'}
     prompt = f'Eres un experto analista. Resume estos cambios de precios para el dueño en 3 puntitos breves: {json.dumps(changes)}. Sé breve.'
@@ -29,14 +29,14 @@ sample_changes = {
     'new': [{'code': 'LA05', 'detalle': 'Llana acero', 'new': '450'}]
 }
 
-print('Llamando a Gemini 3.1 Flash Lite...')
+print('Llamando a Gemini 2.0 Flash Lite...')
 summary = get_ai_summary(sample_changes)
 print('Resumen:', summary)
 
 # Sanitizar a formato HTML de Telegram
 summary_safe = sanitize_html(summary)
 
-cap = f'🚀 TEST IA (3.1 Flash Lite)\n\n{summary_safe}'
+cap = f'🚀 TEST IA (2.0 Flash Lite)\n\n{summary_safe}'
 url_tg = f'https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage'
 requests.post(url_tg, data={'chat_id': TELEGRAM_CHAT_ID, 'text': cap, 'parse_mode': 'HTML'})
 print('Mensaje enviado a Telegram.')
