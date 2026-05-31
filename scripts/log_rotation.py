@@ -41,6 +41,9 @@ def _default_targets():
          os.path.join(STATUS_DIR, "archive")),
         (os.path.join(REPORTS_DIR, "cron_log.txt"),
          os.path.join(REPORTS_DIR, "archive")),
+        # cron_frequent_log.txt: corre cada 30min → crece mas rapido que cron_log.
+        (os.path.join(REPORTS_DIR, "cron_frequent_log.txt"),
+         os.path.join(REPORTS_DIR, "archive")),
     ]
 
 

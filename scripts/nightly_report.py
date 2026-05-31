@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Reporte ejecutivo nocturno con cadena de fallback de 3 LLMs + plantilla.
 
-Cadena: Gemini 3.1 Flash-Lite -> Cerebras Qwen 2.5 72B -> Groq Llama 3.3 70B -> Plantilla.
+Cadena: Gemini 2.0 Flash-Lite -> Cerebras gpt-oss-120b -> SambaNova Llama 3.3 70B -> Plantilla.
 La plantilla garantiza que SIEMPRE llega un mensaje a Telegram aunque caigan los 3 LLMs.
 """
 import os, json, requests, time, socket
@@ -75,6 +75,10 @@ def call_gemini(prompt):
     for attempt in range(3):
         try:
             res = requests.post(url, json=payload, headers=headers, timeout=40)
+            # Fast-fail en errores no-recuperables: no tiene sentido reintentar
+            # si la key es invalida (400/401) o no autorizada (403).
+            if res.status_code in (400, 401, 403):
+                raise RuntimeError(f"gemini error no-recuperable {res.status_code}: {res.text[:200]}")
             if res.status_code == 429:
                 wait = (attempt + 1) * 10
                 log_metric("llm_rate_limit", f"gemini attempt={attempt} wait={wait}s")
@@ -85,6 +89,8 @@ def call_gemini(prompt):
             if text:
                 return text
             last_err = "empty response"
+        except RuntimeError:
+            raise  # fast-fail: propagar sin reintentar
         except (requests.RequestException, KeyError, ValueError) as e:
             last_err = f"{type(e).__name__}: {e}"
             time.sleep(2)

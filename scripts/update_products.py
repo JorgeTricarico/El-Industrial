@@ -55,7 +55,7 @@ def _git_head_short():
         return "unknown"
 
 
-def update_heartbeat(host, status="ok", duration_s=0):
+def update_heartbeat(host, status="ok", duration_s=0, error_msg=None):
     """Heartbeat multi-nodo. Mergea la entrada de `host` sin pisar otros nodos.
     Sigue en root status/ (no per-tenant)."""
     import heartbeat_io
@@ -65,6 +65,8 @@ def update_heartbeat(host, status="ok", duration_s=0):
         "duration_s": round(duration_s, 2),
         "version": _git_head_short(),
     }
+    if error_msg:
+        fields["error"] = str(error_msg)[:200]
     try:
         heartbeat_io.write_node(STATUS_DIR, host, fields)
     except OSError as e:
@@ -354,6 +356,7 @@ def main(argv=None):
     any_ok = False
     any_fail = False
     supplier_down_fail = False
+    errors = []
     for t in tenants:
         res = process_tenant(t, silent=silent)
         status = res["status"]
@@ -366,7 +369,9 @@ def main(argv=None):
             # tenants en testing/inactive no son fallo
             print(f"[{res['slug']}] {status}")
         else:
-            print(f"[{res['slug']}] FAIL ({status}): {res.get('error', '')}", file=sys.stderr)
+            err_msg = res.get('error', '')
+            print(f"[{res['slug']}] FAIL ({status}): {err_msg}", file=sys.stderr)
+            errors.append(f"{res['slug']}:{status}")
             log_metrics(host, status, 0, peer_status, start_ts, tenant_slug=res["slug"])
             any_fail = True
             if status == "supplier_down":
@@ -377,14 +382,15 @@ def main(argv=None):
         update_heartbeat(host, status="ok", duration_s=duration)
         return 0
     elif any_ok and any_fail:
-        update_heartbeat(host, status="partial_fail", duration_s=duration)
+        update_heartbeat(host, status="partial_fail", duration_s=duration, error_msg=",".join(errors))
         return 0  # mantenemos exit 0 si al menos un tenant succeeded
     else:
+        err_str = ",".join(errors)
         if supplier_down_fail:
-            update_heartbeat(host, status="supplier_down", duration_s=duration)
+            update_heartbeat(host, status="supplier_down", duration_s=duration, error_msg=err_str)
             return 3
         else:
-            update_heartbeat(host, status="api_fail", duration_s=duration)
+            update_heartbeat(host, status="api_fail", duration_s=duration, error_msg=err_str)
             return 1
 
 
