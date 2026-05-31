@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Reporte ejecutivo nocturno con cadena de fallback de 3 LLMs + plantilla.
 
-Cadena: Gemini 2.0 Flash-Lite -> Cerebras gpt-oss-120b -> SambaNova Llama 3.3 70B -> Plantilla.
+Cadena: Gemini 3.1 Flash-Lite -> Cerebras gpt-oss-120b -> SambaNova Llama 3.3 70B -> Plantilla.
 La plantilla garantiza que SIEMPRE llega un mensaje a Telegram aunque caigan los 3 LLMs.
 """
 import os, json, requests, time, socket
@@ -68,7 +68,8 @@ def call_gemini(prompt):
     # Antes la metiamos en ?key=... y cuando requests lanzaba HTTPError, el
     # mensaje incluia el URL completo con la key. Eso se loggeaba en
     # metrics.jsonl y podia filtrarse. Header keeps it out of error strings.
-    url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent"
+    # Model update: 3.1 is the new stable. 2.0 is deprecated.
+    url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent"
     headers = {"x-goog-api-key": GEMINI_API_KEY, "Content-Type": "application/json"}
     payload = {"contents": [{"parts": [{"text": prompt}]}]}
     last_err = None

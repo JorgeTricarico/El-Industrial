@@ -12,7 +12,7 @@ TELEGRAM_TOKEN = os.getenv('TELEGRAM_TOKEN')
 TELEGRAM_CHAT_ID = os.getenv('TELEGRAM_CHAT_ID')
 
 def get_ai_summary(changes):
-    model_name = 'gemini-2.0-flash-lite'
+    model_name = 'gemini-3.1-flash-lite'
     url = f'https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent'
     headers = {'x-goog-api-key': GEMINI_API_KEY, 'Content-Type': 'application/json'}
     prompt = f'Eres un experto analista. Resume estos cambios de precios para el dueño en 3 puntitos breves: {json.dumps(changes)}. Sé breve.'
