@@ -38,37 +38,72 @@ fi
 
 cd "$PROJECT_ROOT" || exit
 
-# --- Auto-pull: siempre ejecutar la ultima version del codigo ---
+# PULSE_PY se define ANTES del pull para que el bloque pull_fail pueda usarlo.
+# BUG-FIX 31-may-2026: antes estaba definido en linea 101, despues del pull,
+# causando que el pulse pull_fail nunca se ejecutara (variable vacia).
+PULSE_PY="$SCRIPT_DIR/node_pulse.py"
+
+
 # Hacemos pull --rebase --autostash antes que cualquier otra logica para que
 # todos los nodos arranquen con el mismo arbol que main en GitHub.
-# Si el pull falla (conflicto con archivo untracked, divergencia, no hay net):
-# ABORTAMOS. La version vieja del codigo puede tener bugs ya parcheados y, peor,
-# el dedup commit-marker puede confundir con commits posteriores y hacer
-# dup_skip falso. Mejor no correr que correr con codigo stale.
-# Lección 19-may-2026: la Pi corrio 2 dias con .gz untracked bloqueando pull
-# y siempre vio el commit-marker [run:YY-MM-DD] del cloud filler -> dup_skip.
+# Si falla por archivos untracked conocidos (.gz de data), los limpiamos y
+# reintentamos UNA VEZ antes de abortar (fix loop de death 29-may-2026).
 log_message "Auto-pull: git pull --rebase --autostash origin main..."
-if git pull --rebase --autostash origin main --quiet 2>>"$LOG_FILE"; then
+PULL_ERR_FILE=$(mktemp)
+if git pull --rebase --autostash origin main --quiet 2>"$PULL_ERR_FILE" | tee -a "$LOG_FILE"; then
+    rm -f "$PULL_ERR_FILE"
     NEW_HEAD=$(git rev-parse --short HEAD 2>/dev/null)
     log_message "Pull OK. HEAD=$NEW_HEAD"
-    # Refrescar heartbeat.version YA (sin esperar al update_products del final).
-    # Sin esto, entre el pull y el proximo cron (~9h despues) el healthcheck
-    # alertaba por "drift de version" como falso positivo.
     python3 "$SCRIPT_DIR/refresh_heartbeat.py" >>"$LOG_FILE" 2>&1 || true
 else
-    log_message "CRITICO: git pull fallo. Abortando corrida con codigo stale."
-    # Pulso pull_fail (sin venv, usando system python como fallback)
-    if [ -f "$PULSE_PY" ]; then
-        PY_BIN="${VENV_PATH}/bin/python"
-        [ -x "$PY_BIN" ] || PY_BIN="python3"
-        "$PY_BIN" "$PULSE_PY" --outcome "pull_fail" --note "git pull --rebase --autostash fallo" >>"$LOG_FILE" 2>&1 || true
+    PULL_STDERR=$(cat "$PULL_ERR_FILE")
+    cat "$PULL_ERR_FILE" >>"$LOG_FILE"
+    rm -f "$PULL_ERR_FILE"
+
+    # --- Self-heal: limpiar .gz untrackeados que bloquean el merge ---
+    # El error tipico es: "untracked working tree files would be overwritten by merge"
+    # Esos archivos YA estan en origin/main — eliminarlos localmente es seguro.
+    UNTRACKED_BLOCKING=$(echo "$PULL_STDERR" | grep -oP 'tenants/[^\s]+\.gz' || true)
+    if [ -n "$UNTRACKED_BLOCKING" ]; then
+        log_message "SELFHEAL: pull fallo por untracked .gz. Limpiando y reintentando..."
+        while IFS= read -r blocked_file; do
+            if [ -f "$PROJECT_ROOT/$blocked_file" ]; then
+                log_message "SELFHEAL: eliminando untracked $blocked_file"
+                rm -f "$PROJECT_ROOT/$blocked_file"
+                # Loggear el evento en metrics.jsonl para trazabilidad
+                python3 -c "
+import json, os
+from datetime import datetime
+entry = {'ts': datetime.now().isoformat(), 'node': '$HOSTNAME', 'event': 'selfheal_git_cleanup', 'detail': 'removed untracked: $blocked_file'}
+with open('$PROJECT_ROOT/status/metrics.jsonl', 'a') as f: f.write(json.dumps(entry) + chr(10))
+" 2>/dev/null || true
+            fi
+        done <<< "$UNTRACKED_BLOCKING"
+        log_message "SELFHEAL: reintentando git pull tras cleanup..."
+        if git pull --rebase --autostash origin main --quiet >>"$LOG_FILE" 2>&1; then
+            NEW_HEAD=$(git rev-parse --short HEAD 2>/dev/null)
+            log_message "SELFHEAL: Pull OK tras cleanup. HEAD=$NEW_HEAD"
+            python3 "$SCRIPT_DIR/refresh_heartbeat.py" >>"$LOG_FILE" 2>&1 || true
+        else
+            log_message "CRITICO: git pull fallo incluso tras cleanup. Abortando."
+            PY_BIN="${VENV_PATH}/bin/python" && [ -x "$PY_BIN" ] || PY_BIN="python3"
+            "$PY_BIN" "$PULSE_PY" --outcome "pull_fail" --note "pull fallo tras selfheal cleanup" >>"$LOG_FILE" 2>&1 || true
+            "$PY_BIN" "$SCRIPT_DIR/aiops_remediate.py" "pull_fail tras selfheal: $PULL_STDERR" >>"$LOG_FILE" 2>&1 || true
+            exit 2
+        fi
+    else
+        log_message "CRITICO: git pull fallo (no es problema de .gz untracked). Abortando."
+        log_message "Stderr: $PULL_STDERR"
+        PY_BIN="${VENV_PATH}/bin/python" && [ -x "$PY_BIN" ] || PY_BIN="python3"
+        "$PY_BIN" "$PULSE_PY" --outcome "pull_fail" --note "git pull fallo: $(echo $PULL_STDERR | head -c 200)" >>"$LOG_FILE" 2>&1 || true
+        "$PY_BIN" "$SCRIPT_DIR/aiops_remediate.py" "git pull fallo: $PULL_STDERR" >>"$LOG_FILE" 2>&1 || true
+        exit 2
     fi
-    exit 2
 fi
 
 # --- Pulso del nodo: arrancamos. Siempre pulsea aunque la corrida no haga trabajo util.
 # Trazabilidad total: cada device en cada cron deja huella en heartbeat.json.
-PULSE_PY="$SCRIPT_DIR/node_pulse.py"
+# NOTA: PULSE_PY se define antes del bloque pull (ver arriba) para que pull_fail lo use.
 pulse() {
     # uso: pulse <outcome> [nota]
     if [ -f "$PULSE_PY" ]; then
@@ -158,20 +193,35 @@ if [ -d "$VENV_PATH" ]; then
     source "$VENV_PATH/bin/activate"
 fi
 
-python3 "$SCRIPT_DIR/update_products.py"
+# Capturar stderr por separado para que tracebacks no se pierdan.
+# Sin esto, si Python crashea con ImportError/etc, el log no muestra nada util.
+UPDATE_STDERR_FILE=$(mktemp)
+python3 "$SCRIPT_DIR/update_products.py" 2>"$UPDATE_STDERR_FILE"
 PY_EXIT_CODE=$?
+if [ -s "$UPDATE_STDERR_FILE" ]; then
+    log_message "--- update_products stderr ---"
+    cat "$UPDATE_STDERR_FILE" >>"$LOG_FILE"
+    log_message "--- fin stderr ---"
+fi
+UPDATE_STDERR_SNIPPET=$(head -c 500 "$UPDATE_STDERR_FILE")
+rm -f "$UPDATE_STDERR_FILE"
 
 if [ $PY_EXIT_CODE -ne 0 ]; then
-    log_message "CRÍTICO: update_products fallo con código $PY_EXIT_CODE."
+    log_message "CRITICO: update_products fallo con codigo $PY_EXIT_CODE."
     if [ $PY_EXIT_CODE -eq 3 ]; then
         pulse "supplier_down" "proveedor caido (timeout/500)"
+        FAIL_REASON="supplier_down: API de Bertual caida o timeout. Exit=$PY_EXIT_CODE. Stderr: $UPDATE_STDERR_SNIPPET"
     else
         pulse "supplier_fail" "update_products exit=$PY_EXIT_CODE"
+        FAIL_REASON="supplier_fail: update_products exit=$PY_EXIT_CODE. Stderr: $UPDATE_STDERR_SNIPPET"
     fi
     # Igual corremos nightly_report: la garantia Lun-Sab mandara filler supplier_down.
-    log_message "Corriendo nightly_report para que el filler 'supplier_down' garantice mensaje al cliente..."
+    log_message "Corriendo nightly_report para filler 'supplier_down'..."
     python3 "$SCRIPT_DIR/nightly_report.py" >>"$LOG_FILE" 2>&1 || true
-    # Commit/push del heartbeat (con pulso supplier_fail/supplier_down) para trazabilidad
+    # AIOps: diagnostico automatico del fallo con contexto completo
+    log_message "Lanzando AIOps remediation con contexto del fallo..."
+    python3 "$SCRIPT_DIR/aiops_remediate.py" "$FAIL_REASON" >>"$LOG_FILE" 2>&1 || true
+    # Commit/push del heartbeat para trazabilidad
     git add status/heartbeat.json 2>/dev/null || true
     if ! git diff --cached --quiet 2>/dev/null; then
         git commit -m "chore: pulse $HOSTNAME fail-$PY_EXIT_CODE $TODAY_TAG [skip ci]" >>"$LOG_FILE" 2>&1 || true
@@ -193,7 +243,7 @@ else
 fi
 
 log_message "Ejecutando reporte ejecutivo nocturno..."
-python3 "$SCRIPT_DIR/nightly_report.py"
+python3 "$SCRIPT_DIR/nightly_report.py" >>"$LOG_FILE" 2>&1
 NR_EXIT_CODE=$?
 if [ $NR_EXIT_CODE -eq 0 ]; then
     log_message "Nightly OK (exit=0). Telegram deberia haber recibido el informe."

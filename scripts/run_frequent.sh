@@ -32,9 +32,20 @@ fi
 cd "$PROJECT_ROOT" || exit
 
 # --- Auto-pull: siempre ejecutar la ultima version ---
-# rebase + autostash para no fallar si quedaron cambios locales (metrics, heartbeat).
+# Mismo self-heal que run_daily: si hay .gz untracked bloqueando, los limpia y reintenta.
 if ! git pull --rebase --autostash origin main --quiet 2>>"$LOG_FILE"; then
-    log_message "ADVERTENCIA: git pull fallo en frequent, continuando con codigo local."
+    PULL_ERR=$(git pull --rebase --autostash origin main 2>&1 || true)
+    BLOCKING=$(echo "$PULL_ERR" | grep -oP 'tenants/[^\s]+\.gz' || true)
+    if [ -n "$BLOCKING" ]; then
+        log_message "SELFHEAL frequent: limpiando .gz untracked bloqueante..."
+        while IFS= read -r f; do
+            [ -f "$PROJECT_ROOT/$f" ] && rm -f "$PROJECT_ROOT/$f" && log_message "SELFHEAL frequent: rm $f"
+        done <<< "$BLOCKING"
+        git pull --rebase --autostash origin main --quiet >>"$LOG_FILE" 2>&1 || \
+            log_message "ADVERTENCIA: git pull fallo incluso tras cleanup en frequent."
+    else
+        log_message "ADVERTENCIA: git pull fallo en frequent (no es .gz). Continuando con codigo local."
+    fi
 fi
 
 # --- Auto-install deps si requirements.txt cambio (igual logica que run_daily) ---
@@ -66,23 +77,34 @@ if python3 "$SCRIPT_DIR/should_retry.py" >> "$LOG_FILE" 2>&1; then
     exit $?
 fi
 
-# --- Ejecución Silenciosa ---
+# --- Ejecucion Silenciosa ---
 if [ -d "$VENV_PATH" ]; then
     source "$VENV_PATH/bin/activate"
 fi
 
-python3 "$SCRIPT_DIR/update_products.py" --silent
+# Capturar stderr para que errores de importacion o crashes no se pierdan.
+FREQ_STDERR=$(mktemp)
+python3 "$SCRIPT_DIR/update_products.py" --silent >>"$LOG_FILE" 2>"$FREQ_STDERR"
 PY_EXIT_CODE=$?
+if [ -s "$FREQ_STDERR" ]; then
+    log_message "--- update_products --silent stderr ---"
+    cat "$FREQ_STDERR" >>"$LOG_FILE"
+    log_message "--- fin stderr ---"
+fi
+rm -f "$FREQ_STDERR"
 
 if [ $PY_EXIT_CODE -eq 0 ]; then
-    # Subir métricas y heartbeat incluso en ejecuciones frecuentes
+    # Subir metricas y heartbeat incluso en ejecuciones frecuentes
     git add status/heartbeat.json status/metrics.jsonl 2>/dev/null
     if [[ -n $(git status -s status/) ]]; then
-        git commit -m "Telemetría frecuente: $(date +%H:%M) [$HOSTNAME] [skip ci]" --quiet
+        git commit -m "Telemetria frecuente: $(date +%H:%M) [$HOSTNAME] [skip ci]" --quiet
         git push origin main --quiet
     fi
 else
-    log_message "ERROR: Ejecución frecuente falló con código $PY_EXIT_CODE."
+    log_message "ERROR: Ejecucion frecuente fallo con codigo $PY_EXIT_CODE."
+    # Lanzar watchdog: si los datos estan stale, intentara remediacion automatica.
+    log_message "Lanzando selfheal_watchdog para verificar estado y remediar..."
+    python3 "$SCRIPT_DIR/selfheal_watchdog.py" >>"$LOG_FILE" 2>&1 || true
     exit 1
 fi
 
