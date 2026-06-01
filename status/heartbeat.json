@@ -1,14 +1,14 @@
 {
   "nodes": {
     "DESKTOP-MI43BOU": {
-      "last_run": "2026-06-01T15:19:00.585551",
+      "last_run": "2026-06-01T15:19:41.003287",
       "last_outcome": "dup_skip",
-      "version": "e5090fa",
+      "version": "a9083d7",
       "role_declared": "backup",
       "note": "commit-marker [run:26-06-01] con update real ya presente",
       "last_pulled_iso": "2026-06-01T15:19:00.477778",
-      "status": "supplier_down",
-      "duration_s": 110.69,
+      "status": "ok",
+      "duration_s": 7.64,
       "error": "el-industrial:supplier_down"
     },
     "raspberrypi": {
