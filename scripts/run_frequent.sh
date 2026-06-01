@@ -73,6 +73,7 @@ fi
 # promovemos la ejecución frecuente a una corrida completa diaria (run_daily.sh).
 if python3 "$SCRIPT_DIR/should_retry.py" >> "$LOG_FILE" 2>&1; then
     log_message "REINTENTO: Detección de fallo previo. Ejecutando ciclo completo diario..."
+    rm -f "$LOCK_FILE"
     bash "$SCRIPT_DIR/run_daily.sh"
     exit $?
 fi
