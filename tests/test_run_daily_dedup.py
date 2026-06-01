@@ -26,7 +26,7 @@ RUN_DAILY = REPO_ROOT / "scripts" / "run_daily.sh"
 def _git(repo, *args, check=True):
     return subprocess.run(
         ["git", "-C", str(repo), *args],
-        capture_output=True, text=True, check=check, env={**os.environ, "GIT_AUTHOR_NAME": "T", "GIT_AUTHOR_EMAIL": "t@t", "GIT_COMMITTER_NAME": "T", "GIT_COMMITTER_EMAIL": "t@t"}
+        capture_output=True, text=True, check=check, env={**os.environ, "GIT_AUTHOR_NAME": "T", "GIT_AUTHOR_EMAIL": "t@t", "GIT_COMMITTER_NAME": "T", "GIT_COMMITTER_EMAIL": "t@t", "GIT_TERMINAL_PROMPT": "0"}
     )
 
 
@@ -77,6 +77,7 @@ def _run_script(repo, extra_env=None):
     env.pop("VIRTUAL_ENV", None)  # evitar interferencia
     env["EL_INDUSTRIAL_ROLE"] = "primary"  # forzar ruta primary (sin backup-check)
     env["HOME"] = str(repo)  # contener archivos temporales
+    env["GIT_TERMINAL_PROMPT"] = "0"
     if extra_env:
         env.update(extra_env)
     # Lockfile aparte para no chocar con corridas reales en este host
@@ -155,8 +156,8 @@ def test_pull_fail_aborts_with_exit_2(fake_repo):
     result = _run_script(fake_repo)
     assert result.returncode == 2, \
         f"Esperaba exit 2 en pull fail, vino {result.returncode}. stdout={result.stdout[-500:]}"
-    assert "Abortando corrida con codigo stale" in result.stdout, \
-        f"Esperaba mensaje 'Abortando corrida con codigo stale'. stdout={result.stdout[-500:]}"
+    assert "git pull fallo (no es problema de .gz untracked). Abortando." in result.stdout, \
+        f"Esperaba mensaje 'git pull fallo (no es problema de .gz untracked). Abortando.'. stdout={result.stdout[-500:]}"
     # Y CRITICO: no debe haber llegado a dup_skip ni a update_products
     assert "dup_skip" not in result.stdout
     assert "update_products" not in result.stdout

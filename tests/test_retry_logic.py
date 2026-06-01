@@ -13,7 +13,8 @@ def test_should_retry_no_active_tenants():
 def test_should_retry_no_metrics_file(tmp_path):
     with patch("should_retry.load_active_tenants", return_value=["alpha"]):
         with patch("should_retry.STATUS_DIR", str(tmp_path)):
-            assert should_retry.main() == 1
+            with patch("should_retry.data_is_stale", return_value=(False, 10.0)):
+                assert should_retry.main() == 1
 
 def test_should_retry_needed_on_fail(tmp_path):
     ar_tz = timezone(timedelta(hours=-3))
@@ -54,4 +55,11 @@ def test_should_retry_no_runs_today(tmp_path):
 
     with patch("should_retry.load_active_tenants", return_value=["alpha"]):
         with patch("should_retry.STATUS_DIR", str(tmp_path)):
-            assert should_retry.main() == 1
+            with patch("should_retry.data_is_stale", return_value=(False, 10.0)):
+                assert should_retry.main() == 1
+
+def test_should_retry_needed_on_stale_data(tmp_path):
+    with patch("should_retry.load_active_tenants", return_value=["alpha"]):
+        with patch("should_retry.STATUS_DIR", str(tmp_path)):
+            with patch("should_retry.data_is_stale", return_value=(True, 30.0)):
+                assert should_retry.main() == 0

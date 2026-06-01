@@ -1,4 +1,5 @@
 #!/bin/bash
+set -euo pipefail
 
 # --- Zona horaria del usuario ---
 # La Pi y los runners de GH Actions corren en UTC. Forzamos AR para que TODOS

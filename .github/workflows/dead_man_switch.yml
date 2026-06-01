@@ -30,6 +30,7 @@ jobs:
         env:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         # exit code 0 = OK, 1 = alerta enviada, 2 = alerta no enviada
         # No queremos que un "alerta enviada" rompa el workflow (es esperado).
         # Pero si el script crashea (exit > 2), si queremos verlo.
