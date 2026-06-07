@@ -270,9 +270,6 @@ log_message "Procesando cambios en Git..."
 
 # Solo si hay cambios reales para commitear
 if [[ -n $(git status -s) ]]; then
-    if [ ! -z "$GITHUB_TOKEN" ]; then
-        git remote set-url origin "https://x-access-token:${GITHUB_TOKEN}@github.com/JorgeTricarico/El-Industrial.git"
-    fi
     
     # SAFETY: stagear SOLO paths esperados, jamas `git add .` que podria
     # incluir .env.backup, dumps, credenciales que alguien dejo a mano.
