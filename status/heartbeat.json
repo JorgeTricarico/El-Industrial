@@ -1,14 +1,14 @@
 {
   "nodes": {
     "DESKTOP-MI43BOU": {
-      "last_run": "2026-06-26T00:01:48.504952",
+      "last_run": "2026-06-27T00:01:57.793978",
       "last_outcome": "supplier_down",
-      "version": "89e80b8",
+      "version": "6cd50e2",
       "role_declared": "backup",
       "note": "proveedor caido (timeout/500)",
-      "last_pulled_iso": "2026-06-26T00:00:03.654391",
+      "last_pulled_iso": "2026-06-27T00:00:08.547980",
       "status": "supplier_down",
-      "duration_s": 104.22,
+      "duration_s": 114.58,
       "error": "el-industrial:supplier_down"
     },
     "raspberrypi": {
