@@ -112,6 +112,124 @@ def test_main_no_dispara_agente_si_no_corresponde(monkeypatch):
     assert called["n"] == 0
 
 
+# --- Pipeline run_autofix con driver FALSO: prueba la garantia de seguridad ---
+# (que verify_rejected y tests_failed BLOQUEEN el push). Sin git/agy/subprocess.
+
+class FakeDriver:
+    def __init__(self, agent_outputs, changed=True, tests_pass=True, push_ok=True):
+        self._agent_outputs = list(agent_outputs)
+        self._i = 0
+        self.changed = changed
+        self.tests_pass = tests_pass
+        self.push_ok = push_ok
+        self.calls = []
+
+    def setup(self):
+        self.calls.append("setup")
+        return "BASESHA"
+
+    def run_agent(self, prompt):
+        self.calls.append("run_agent")
+        out = self._agent_outputs[self._i]
+        self._i += 1
+        return out
+
+    def discard_changes(self, sha):
+        self.calls.append("discard")
+
+    def has_changes(self, base_sha):
+        self.calls.append("has_changes")
+        return self.changed
+
+    def commit_all(self, msg):
+        self.calls.append("commit")
+        return "FIXSHA"
+
+    def get_diff(self, sha):
+        return "diff --stat\n+algo"
+
+    def run_tests(self):
+        self.calls.append("run_tests")
+        return self.tests_pass, "pytest output"
+
+    def push(self, sha):
+        self.calls.append("push")
+        return self.push_ok, "push output"
+
+    def summary(self, base_sha, fix_sha):
+        return "abc1234 fix(auto): ..."
+
+    def cleanup(self):
+        self.calls.append("cleanup")
+
+
+def test_pipeline_pushea_solo_si_aprueba_y_tests_verdes():
+    """Happy path: fix con cambios + APROBADO + tests verdes -> push."""
+    drv = FakeDriver(agent_outputs=["diagnostico...", "fix aplicado", "APROBADO: correcto"])
+    res = auto_fix.run_autofix("grave", driver=drv)
+    assert res["outcome"] == "pushed"
+    assert "push" in drv.calls
+    assert "cleanup" in drv.calls  # siempre limpia
+
+
+def test_pipeline_NO_pushea_si_verificador_rechaza():
+    """GARANTIA: si el verificador RECHAZA, no se corren tests ni se pushea."""
+    drv = FakeDriver(agent_outputs=["diagnostico...", "fix aplicado", "RECHAZADO: rompe el deploy"])
+    res = auto_fix.run_autofix("grave", driver=drv)
+    assert res["outcome"] == "verify_rejected"
+    assert "push" not in drv.calls
+    assert "run_tests" not in drv.calls  # ni siquiera llega al gate de tests
+    assert "cleanup" in drv.calls
+
+
+def test_pipeline_NO_pushea_si_tests_fallan():
+    """GARANTIA: verificador aprueba pero pytest falla -> NO se pushea."""
+    drv = FakeDriver(agent_outputs=["diagnostico...", "fix aplicado", "APROBADO"], tests_pass=False)
+    res = auto_fix.run_autofix("grave", driver=drv)
+    assert res["outcome"] == "tests_failed"
+    assert "run_tests" in drv.calls
+    assert "push" not in drv.calls
+    assert "cleanup" in drv.calls
+
+
+def test_pipeline_no_change_si_diagnostico_sin_fix():
+    """Si el diagnostico dice SIN FIX APLICABLE, no corre fix/verify/tests/push."""
+    drv = FakeDriver(agent_outputs=["Diagnostico: SIN FIX APLICABLE, Bertual caido del lado del proveedor."])
+    res = auto_fix.run_autofix("grave", driver=drv)
+    assert res["outcome"] == "no_change"
+    assert drv.calls.count("run_agent") == 1  # solo el diagnostico
+    assert "push" not in drv.calls
+
+
+def test_pipeline_no_change_si_fix_no_toca_nada():
+    """Si el agente de fix no dejo cambios, no hay nada que verificar ni pushear."""
+    drv = FakeDriver(agent_outputs=["diagnostico...", "no hice nada"], changed=False)
+    res = auto_fix.run_autofix("grave", driver=drv)
+    assert res["outcome"] == "no_change"
+    assert "run_tests" not in drv.calls
+    assert "push" not in drv.calls
+
+
+def test_pipeline_push_failed_se_reporta():
+    """Si el push falla (main avanzo, etc), outcome push_failed."""
+    drv = FakeDriver(agent_outputs=["diag", "fix", "APROBADO"], push_ok=False)
+    res = auto_fix.run_autofix("grave", driver=drv)
+    assert res["outcome"] == "push_failed"
+    assert "push" in drv.calls
+
+
+def test_pipeline_cleanup_aunque_haya_excepcion():
+    """El driver siempre se limpia, incluso si una etapa explota."""
+    class Boom(FakeDriver):
+        def run_agent(self, prompt):
+            raise RuntimeError("boom")
+
+    drv = Boom(agent_outputs=[])
+    res = auto_fix.run_autofix("grave", driver=drv)
+    assert res["outcome"] == "error"
+    assert "cleanup" in drv.calls
+
+
 def test_main_dispara_agente_y_registra_cooldown(tmp_path, monkeypatch):
     """main() con should_run True: invoca run_autofix y deja el intento
     registrado, de modo que el proximo should_run entra en cooldown."""

@@ -20,7 +20,7 @@
 - **Fecha:** 2026-07-01
 - **Agente:** Claude Opus 4.8 (sesión de Jorge)
 - **Commit head al cierre:** ver git log
-- **Tests:** 222 ✅ (coverage 58%; update_products 85%, healthcheck 76%)
+- **Tests:** 229 ✅ (coverage 59%; update_products 85%, auto_fix 69%)
 - **Producción:** verde — Pi corrió 01/07 10:00 AR (`outcome=updated`). Data del 01/07 en repo.
 
 ---

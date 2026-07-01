@@ -235,100 +235,157 @@ def _run_agent(agy_bin, clone, prompt, timeout):
     return (r.stdout or "").strip()
 
 
-def run_autofix(reason):
-    """Pipeline de agentes ESPECIALIZADOS en un clon AISLADO. Devuelve {outcome, detail}.
+class _AutoFixError(Exception):
+    """Error de una etapa del pipeline con su outcome asociado."""
+    def __init__(self, outcome, detail=""):
+        super().__init__(f"{outcome}: {detail}")
+        self.outcome = outcome
+        self.detail = detail
 
-    Cadena: diagnostico -> fix -> verificacion adversarial -> gate de pytest
-    (wrapper) -> push. Cada agente corre en su propia invocacion con contexto
-    fresco (menos alucinacion; el que verifica no es el que parcheo). El clon
-    tiene origin=repo local, asi ningun agente puede pushear a prod por su
-    cuenta; el push lo hace ESTE wrapper solo si pytest pasa.
+
+def _fix_commit_msg():
+    stamp = datetime.now().strftime("%y-%m-%d")
+    return f"fix(auto): remediacion automatica {stamp} [run:{stamp}] [skip ci]"
+
+
+class _GitDriver:
+    """Encapsula TODO el I/O (git, agy, pytest, filesystem) del pipeline.
+
+    Todas las operaciones con efecto viven aca. run_autofix() solo orquesta,
+    asi la logica de seguridad (¿cuando se pushea?) se testea con un driver
+    falso, sin tocar git ni subprocess reales.
     """
-    stage_timeout = _env_int("AUTO_FIX_AGENT_TIMEOUT", DEFAULT_AGENT_TIMEOUT)
-    tests_timeout = _env_int("AUTO_FIX_TESTS_TIMEOUT", DEFAULT_TESTS_TIMEOUT)
-    agy_bin = os.getenv("AUTO_FIX_AGENT_BIN") or os.path.expanduser("~/.local/bin/agy")
-    if not os.path.exists(agy_bin):
-        return {"outcome": "agent_missing", "detail": f"no existe {agy_bin}"}
-    workdir = tempfile.mkdtemp(prefix="el-industrial-autofix-")
-    clone = os.path.join(workdir, "repo")
 
-    def _head():
-        return subprocess.check_output(["git", "-C", clone, "rev-parse", "HEAD"]).decode().strip()
+    def __init__(self):
+        self.stage_timeout = _env_int("AUTO_FIX_AGENT_TIMEOUT", DEFAULT_AGENT_TIMEOUT)
+        self.tests_timeout = _env_int("AUTO_FIX_TESTS_TIMEOUT", DEFAULT_TESTS_TIMEOUT)
+        self.agy_bin = os.getenv("AUTO_FIX_AGENT_BIN") or os.path.expanduser("~/.local/bin/agy")
+        if not os.path.exists(self.agy_bin):
+            raise _AutoFixError("agent_missing", f"no existe {self.agy_bin}")
+        self.workdir = tempfile.mkdtemp(prefix="el-industrial-autofix-")
+        self.clone = os.path.join(self.workdir, "repo")
 
-    def _reset_to(sha):
-        subprocess.run(["git", "-C", clone, "reset", "--hard", sha], check=False)
-        subprocess.run(["git", "-C", clone, "clean", "-fd"], check=False)
+    def _co(self, *args):
+        return subprocess.check_output(["git", "-C", self.clone, *args]).decode().strip()
 
-    try:
+    def _head(self):
+        return self._co("rev-parse", "HEAD")
+
+    def setup(self):
+        """Clona el repo local y lo alinea a la ultima main de github. Devuelve base_sha.
+
+        El clon tiene origin=repo local; github queda como remoto 'prod'. Asi
+        ningun agente puede pushear a prod: solo el wrapper, via 'prod'.
+        """
         github_url = subprocess.check_output(
             ["git", "-C", BASE_DIR, "config", "--get", "remote.origin.url"]
         ).decode().strip()
-
-        # Clon local: origin del clon = repo local (NO github).
-        r = _run(["git", "clone", "--quiet", BASE_DIR, clone], cwd=workdir, timeout=120)
+        r = _run(["git", "clone", "--quiet", BASE_DIR, self.clone], cwd=self.workdir, timeout=120)
         if r.returncode != 0:
-            return {"outcome": "clone_failed", "detail": r.stderr[:300]}
-        # Alinear a la ULTIMA main de github (remoto 'prod') para push ff.
-        subprocess.run(["git", "-C", clone, "remote", "add", "prod", github_url], check=False)
-        fr = _run(["git", "-C", clone, "fetch", "prod", "--quiet"], cwd=clone, timeout=60)
+            raise _AutoFixError("clone_failed", r.stderr[:300])
+        subprocess.run(["git", "-C", self.clone, "remote", "add", "prod", github_url], check=False)
+        fr = _run(["git", "-C", self.clone, "fetch", "prod", "--quiet"], cwd=self.clone, timeout=60)
         if fr.returncode == 0:
-            subprocess.run(["git", "-C", clone, "reset", "--hard", "prod/main"], check=False)
-        base_sha = _head()
+            subprocess.run(["git", "-C", self.clone, "reset", "--hard", "prod/main"], check=False)
+        return self._head()
 
-        # STAGE 1 — DIAGNOSTICO (read-only). Descartamos cualquier cambio que deje.
-        diagnosis = _run_agent(agy_bin, clone, prompt_diagnose(reason), stage_timeout)
-        _reset_to(base_sha)
-        if "SIN FIX APLICABLE" in diagnosis.upper():
-            return {"outcome": "no_change", "detail": diagnosis[-500:]}
+    def run_agent(self, prompt):
+        return _run_agent(self.agy_bin, self.clone, prompt, self.stage_timeout)
 
-        # STAGE 2 — FIX. Aplica y (si dejo cambios) commiteamos.
-        _run_agent(agy_bin, clone, prompt_fix(diagnosis), stage_timeout)
-        dirty = subprocess.check_output(
-            ["git", "-C", clone, "status", "--porcelain"]).decode().strip()
-        if _head() == base_sha and not dirty:
-            return {"outcome": "no_change", "detail": diagnosis[-500:]}
-        if dirty:
-            subprocess.run(["git", "-C", clone, "add", "-A"], check=False)
-            stamp = datetime.now().strftime("%y-%m-%d")
-            subprocess.run(
-                ["git", "-C", clone, "commit", "-q", "-m",
-                 f"fix(auto): remediacion automatica {stamp} [run:{stamp}] [skip ci]"],
-                check=False,
-            )
-        fix_sha = _head()
-        diff = subprocess.check_output(
-            ["git", "-C", clone, "show", "--stat", "-p", fix_sha]
-        ).decode()[:6000]
+    def discard_changes(self, sha):
+        subprocess.run(["git", "-C", self.clone, "reset", "--hard", sha], check=False)
+        subprocess.run(["git", "-C", self.clone, "clean", "-fd"], check=False)
 
-        # STAGE 3 — VERIFICACION ADVERSARIAL (read-only, contexto fresco).
-        verdict = _run_agent(agy_bin, clone, prompt_verify(diff), stage_timeout)
-        _reset_to(fix_sha)  # descarta cualquier edicion del verificador, conserva el fix
-        if not _verdict_approved(verdict):
-            return {"outcome": "verify_rejected", "detail": verdict[-500:]}
+    def has_changes(self, base_sha):
+        dirty = self._co("status", "--porcelain")
+        return self._head() != base_sha or bool(dirty)
 
-        # STAGE 4 — GATE DURO: pytest lo corre el WRAPPER, no un agente.
+    def commit_all(self, msg):
+        subprocess.run(["git", "-C", self.clone, "add", "-A"], check=False)
+        subprocess.run(["git", "-C", self.clone, "commit", "-q", "-m", msg], check=False)
+        return self._head()
+
+    def get_diff(self, sha):
+        return subprocess.check_output(
+            ["git", "-C", self.clone, "show", "--stat", "-p", sha]).decode()[:6000]
+
+    def run_tests(self):
         pybin = os.path.join(BASE_DIR, "venv", "bin", "python")
         if not os.path.exists(pybin):
             pybin = "python3"
-        tr = _run([pybin, "-m", "pytest", "tests/", "-q"], cwd=clone, timeout=tests_timeout)
-        if tr.returncode != 0:
-            return {"outcome": "tests_failed", "detail": (tr.stdout or "")[-800:]}
+        tr = _run([pybin, "-m", "pytest", "tests/", "-q"], cwd=self.clone, timeout=self.tests_timeout)
+        return tr.returncode == 0, (tr.stdout or "")
 
-        # Tests verdes + verificador aprobo -> push ff a github.
-        pr = _run(["git", "-C", clone, "push", "prod", f"{fix_sha}:main"],
-                  cwd=clone, timeout=120)
-        if pr.returncode != 0:
-            return {"outcome": "push_failed", "detail": pr.stderr[:300]}
-        summary = subprocess.check_output(
-            ["git", "-C", clone, "log", "--oneline", f"{base_sha}..{fix_sha}"]
+    def push(self, sha):
+        pr = _run(["git", "-C", self.clone, "push", "prod", f"{sha}:main"],
+                  cwd=self.clone, timeout=120)
+        return pr.returncode == 0, (pr.stderr or "")
+
+    def summary(self, base_sha, fix_sha):
+        return subprocess.check_output(
+            ["git", "-C", self.clone, "log", "--oneline", f"{base_sha}..{fix_sha}"]
         ).decode().strip()
-        return {"outcome": "pushed", "detail": summary}
+
+    def cleanup(self):
+        shutil.rmtree(self.workdir, ignore_errors=True)
+
+
+def run_autofix(reason, driver=None):
+    """Orquesta el pipeline de agentes especializados. Devuelve {outcome, detail}.
+
+    Cadena: diagnostico -> fix -> verificacion adversarial -> gate de pytest
+    (wrapper) -> push. Cada agente corre aislado con contexto fresco (menos
+    alucinacion; el que verifica no es el que parcheo). Todo el I/O vive en el
+    driver; ESTA funcion solo decide. GARANTIA DE SEGURIDAD, testeada: solo se
+    llega a driver.push() si el verificador aprobo Y pytest paso.
+    """
+    try:
+        drv = driver or _GitDriver()
+    except _AutoFixError as e:
+        return {"outcome": e.outcome, "detail": e.detail}
+    try:
+        base_sha = drv.setup()
+
+        # STAGE 1 — DIAGNOSTICO (read-only). Descartamos lo que deje.
+        diagnosis = drv.run_agent(prompt_diagnose(reason))
+        drv.discard_changes(base_sha)
+        if "SIN FIX APLICABLE" in diagnosis.upper():
+            return {"outcome": "no_change", "detail": diagnosis[-500:]}
+
+        # STAGE 2 — FIX. Si no cambio nada, no hay que pushear.
+        drv.run_agent(prompt_fix(diagnosis))
+        if not drv.has_changes(base_sha):
+            return {"outcome": "no_change", "detail": diagnosis[-500:]}
+        fix_sha = drv.commit_all(_fix_commit_msg())
+        diff = drv.get_diff(fix_sha)
+
+        # STAGE 3 — VERIFICACION ADVERSARIAL (contexto fresco).
+        verdict = drv.run_agent(prompt_verify(diff))
+        drv.discard_changes(fix_sha)  # descarta ediciones del verificador, conserva el fix
+        if not _verdict_approved(verdict):
+            return {"outcome": "verify_rejected", "detail": verdict[-500:]}
+
+        # STAGE 4 — GATE DURO: pytest (lo corre el wrapper, no un agente).
+        passed, out = drv.run_tests()
+        if not passed:
+            return {"outcome": "tests_failed", "detail": out[-800:]}
+
+        # Verificador aprobo + tests verdes -> push ff a github.
+        ok, out = drv.push(fix_sha)
+        if not ok:
+            return {"outcome": "push_failed", "detail": out[:300]}
+        return {"outcome": "pushed", "detail": drv.summary(base_sha, fix_sha)}
+    except _AutoFixError as e:
+        return {"outcome": e.outcome, "detail": e.detail}
     except subprocess.TimeoutExpired as e:
         return {"outcome": "timeout", "detail": str(e)}
     except Exception as e:
         return {"outcome": "error", "detail": f"{type(e).__name__}: {e}"}
     finally:
-        shutil.rmtree(workdir, ignore_errors=True)
+        try:
+            drv.cleanup()
+        except Exception:
+            pass
 
 
 _OUTCOME_MSG = {

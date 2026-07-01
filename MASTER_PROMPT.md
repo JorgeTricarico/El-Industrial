@@ -468,8 +468,11 @@
 - ✅ Rama `backup` de `run_daily.sh` (dup_skip vía curl) — antes 0% cubierta. Fake curl en PATH.
 - ✅ `auto_fix`: trigger `hours_since_last_real_update` + parser de veredicto `_verdict_approved`.
 
+**PROGRESO batch 2 (2026-07-01, +7 tests, 229 total)**:
+- ✅ Refactor de testabilidad de `run_autofix`: todo el I/O (git/agy/pytest/fs) detrás de `_GitDriver`; la función solo orquesta. Test con `FakeDriver` prueba la GARANTÍA de seguridad del "arma cargada": `verify_rejected` y `tests_failed` BLOQUEAN el push; `pushed` solo con verdict aprobado + pytest verde; cleanup siempre corre. `auto_fix.py` 55%→69%. Corre en 0.08s (sin subprocess real).
+
 **FALTA (siguiente batch)**:
-- Test de la orquestación completa de `run_autofix` (verify_rejected y tests_failed BLOQUEAN el push; pushed solo con verdict aprobado + pytest verde). Requiere refactor menor para inyectar el runner de agentes/git y testear sin subprocess real. Es el test más importante del "arma cargada".
+- Integración real de `_GitDriver` (clone/agy/push) — solo cubrible con test de integración (git+agy reales); los métodos son wrappers finos, bajo riesgo.
 - `nightly_report.py` (68%): rutas de fallback y fillers.
 - `system_audit.py` (60%), `post_deploy_check.py` (50%).
 - Coverage report en CI + gate mínimo (ej. no bajar de X%).
