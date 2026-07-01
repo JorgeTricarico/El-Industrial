@@ -431,4 +431,12 @@ def main():
 
 
 if __name__ == "__main__":
+    # Cargar .env SOLO al correr standalone (via cron), no al importar: hacerlo
+    # en import cargaria el .env real de prod y romperia el aislamiento de los
+    # tests (Regla #1). Cuando lo invoca healthcheck, este ya cargo el .env.
+    try:
+        from dotenv import load_dotenv
+        load_dotenv(os.path.join(BASE_DIR, ".env"))
+    except Exception:
+        pass
     sys.exit(main())
