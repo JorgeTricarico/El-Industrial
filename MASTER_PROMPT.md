@@ -458,9 +458,15 @@
 
 ### P14 — Fortalecer tests (fundamento del auto-fix seguro)
 
-- **status**: in_progress (batch 1 hecho 2026-07-01; coverage 56%→58%)
+- **status**: ready-to-enable (batches 1-3 hechos 2026-07-01; coverage 56%→58.6%). El core está listo para prender auto_fix; el resto de la cobertura es mejora continua, no bloqueante.
 - **prioridad**: ALTA (es el gate del que depende `auto_fix`)
-- **estimado**: continuo
+- **estimado**: continuo (mejoras incrementales)
+
+**PROGRESO batch 3 (2026-07-01)**:
+- ✅ **CI corría solo 2 archivos** (`test_nightly_report` + `test_healthcheck`) — el resto de los tests NUNCA se ejercitaban en CI. Ahora `test_pipeline.yml` corre la suite COMPLETA (`pytest tests/`) con piso `--cov-fail-under=58`. `pytest-cov` en requirements.
+- ✅ `post_deploy_check.normalize` (núcleo de comparación local↔web, soporta dict y lista) — 3 tests. 232 total.
+
+**Estado para PRENDER auto_fix**: el gate ahora (a) corre completo en CI en cada push, (b) tiene piso de coverage, (c) el verificador exige test por fix, (d) los caminos críticos (severidad, backup, fillers/dedup/garantía cliente, gate del auto_fix) tienen regresión. Suficiente para activar `AUTO_FIX_ENABLED=1` en la Pi.
 
 **PROGRESO batch 1 (2026-07-01, +10 tests, 222 total)**:
 - ✅ Matriz de severidad de `update_products.main()`: exit 0 (ok / partial_fail), exit 3 (todo supplier_down), exit 1 (todo api_fail). Es el contrato que `run_daily.sh` y `auto_fix` consumen. `update_products.py` 69%→85%.

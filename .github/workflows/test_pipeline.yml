@@ -53,7 +53,7 @@ jobs:
               print(f'OK: {f}')
           "
 
-      - name: Run pytest
+      - name: Run pytest (suite COMPLETA + piso de coverage)
         env:
           # Forzar valores ausentes para los tests que asumen cadena explicita
           GEMINI_API_KEY: ""
@@ -62,7 +62,10 @@ jobs:
           TELEGRAM_TOKEN: ""
           TELEGRAM_CHAT_ID: ""
         run: |
-          pytest tests/test_nightly_report.py tests/test_healthcheck.py -v
+          # Suite COMPLETA (antes solo corria 2 archivos -> el resto nunca se
+          # ejercitaba en CI). Piso de coverage: no puede bajar de 58%.
+          # Este es el gate del que depende auto_fix — tiene que correr todo.
+          pytest tests/ --cov=scripts --cov-report=term-missing --cov-fail-under=58
 
       - name: Smoke test — el prompt es construible sin errores
         run: |

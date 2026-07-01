@@ -44,6 +44,37 @@ def _mock_response(ok=True, status=200, content=b"", text=""):
     return r
 
 
+def test_normalize_lista_de_dicts():
+    """Forma lista: [{producto, precio}, ...] -> {producto: precio}."""
+    items = [
+        {"producto": "P1", "precio": "100"},
+        {"producto": "P2", "precio": "200"},
+    ]
+    assert pdc.normalize(items) == {"P1": "100", "P2": "200"}
+
+
+def test_normalize_dict_de_dicts():
+    """Forma dict: {codigo: {precio}} -> {codigo: precio}."""
+    items = {"P1": {"precio": "100"}, "P2": {"precio_final": "250"}}
+    out = pdc.normalize(items)
+    assert out["P1"] == "100"
+    assert out["P2"] == "250"
+
+
+def test_normalize_claves_alternativas_y_descarta_incompletos():
+    """Soporta code/codigo/Articulo_Corto y precio_final/Precio; descarta items
+    sin key o sin precio (no revienta la comparacion contra la web)."""
+    items = [
+        {"code": "A", "precio_final": "10"},
+        {"Articulo_Corto": "B", "Precio": "20"},
+        {"detalle": "sin key ni precio"},   # se descarta
+        {"producto": "C"},                   # sin precio -> se descarta
+        "no soy dict",                       # se ignora
+    ]
+    out = pdc.normalize(items)
+    assert out == {"A": "10", "B": "20"}
+
+
 @patch.object(pdc.requests, "get")
 def test_todo_ok_no_problems(mock_get, fake_tenant):
     """Web publica devuelve el mismo pointer y bytes que el local -> sin alerta."""
