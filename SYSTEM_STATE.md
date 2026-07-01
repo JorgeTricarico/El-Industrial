@@ -20,7 +20,7 @@
 - **Fecha:** 2026-07-01
 - **Agente:** Claude Opus 4.8 (sesión de Jorge)
 - **Commit head al cierre:** ver git log
-- **Tests:** 232 ✅ (coverage 58.6%, piso CI 58%; update_products 85%, auto_fix 69%)
+- **Tests:** 235 ✅ (coverage 58.7%, piso CI 58%; update_products 85%, auto_fix 69%)
 - **Producción:** verde — Pi corrió 01/07 10:00 AR (`outcome=updated`). Data del 01/07 en repo.
 
 ---
@@ -92,6 +92,7 @@
 
 > Solo cambios que afectan operación. Detalles en git log.
 
+- **2026-07-01** `healthcheck.diagnose()` falso positivo: alertaba por CUALQUIER nodo con `status != ok`, aunque fuera viejo. Un backup con `supplier_down` viejo (o que ahora dup_skipea, dejando `status` viejo porque dup_skip no corre update_products) alertaba perpetuamente. Fix: usar `last_outcome` (signal fresco) + solo si la corrida es RECIENTE (≤26h). Cubre el falso positivo real que llegó por Telegram el 01/07.
 - **2026-07-01** CI `test_pipeline.yml`: ahora corre la **suite COMPLETA** (`pytest tests/`) con piso de coverage `--cov-fail-under=58`. Antes solo corría 2 archivos (`test_nightly_report` + `test_healthcheck`) → el resto de los tests nunca se ejercitaban en CI. `pytest-cov` sumado a requirements.
 - **2026-07-01** `scripts/auto_fix.py` (break-glass, P15): auto-fix multi-agente para outage de ≥3 días sin update. Cadena `agy`: diagnóstico → fix → verificación adversarial → gate pytest (wrapper) → push. Clon aislado (agente no pushea a prod), opt-in `AUTO_FIX_ENABLED` (default OFF), cooldown 24h. **NO activado aún** — requiere `AUTO_FIX_ENABLED=1` en `.env` de la Pi. Depende de P14 (tests robustos).
 - **2026-07-01** `healthcheck.diagnose()` (P13 parcial): escala si las últimas 3 corridas fallaron con `supplier_down` o `api_fail`. Antes solo miraba `api_fail` → un outage sostenido de `supplier_down` era invisible hasta el stale-check de 26h. Un `supplier_down` aislado sigue sin alertar (lo cubre el filler).

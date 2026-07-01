@@ -29,6 +29,12 @@ THRESHOLD_HOURS = 26  # tolera un dia + 2h de margen
 # Lun-Sab); recien alertamos cuando el proveedor esta caido de forma sostenida.
 SUSTAINED_FAIL_RUNS = 3
 SUSTAINED_FAIL_STATES = ("api_fail", "supplier_down")
+# Outcomes que representan un FALLO de la ultima corrida de un nodo. Un backup
+# que hace dup_skip (deferido al primary) NO esta en esta lista: es sano.
+NODE_FAILURE_OUTCOMES = frozenset({
+    "supplier_down", "supplier_fail", "api_fail",
+    "partial_fail", "nightly_fail", "pull_fail", "push_fail", "no_tenants",
+})
 
 HOST = socket.gethostname()
 
@@ -166,7 +172,12 @@ def diagnose():
         for name, entry in hb["nodes"].items():
             age = hours_since(entry.get("last_run", ""))
             if age is not None:
-                ages.append((name, age, entry.get("status", "ok")))
+                # last_outcome es el signal MAS FRESCO: el pulse corre en cada
+                # path (incluido dup_skip), mientras que 'status' solo lo refresca
+                # un update_products real. Un backup que dup_skipea deja 'status'
+                # viejo, por eso preferimos last_outcome.
+                outcome = entry.get("last_outcome") or entry.get("status", "ok")
+                ages.append((name, age, outcome))
         if not ages:
             problems.append("heartbeat: ningun nodo con last_run parseable.")
         else:
@@ -177,10 +188,16 @@ def diagnose():
                     f"Heartbeat viejo: nodo mas reciente ({min_age_node}) hace {min_age:.1f}h "
                     f"(umbral {THRESHOLD_HOURS}h). Detalle: {detail}."
                 )
-            # Status no-ok en el ultimo run de cada nodo
-            for name, _age, status in ages:
-                if status != "ok":
-                    problems.append(f"Ultima corrida con status='{status}' (nodo {name}).")
+            # Fallo en la corrida mas RECIENTE de un nodo — solo si es reciente.
+            # Un fallo viejo de un nodo que no volvio a correr NO es incidente
+            # activo (lo cubren check_node_heartbeats, detect_public_site_stale y
+            # el streak de supplier_down). Evita el falso positivo perpetuo de un
+            # backup con status viejo que ahora dup_skipea (fix 2026-07-01).
+            for name, age, outcome in ages:
+                if age <= THRESHOLD_HOURS and outcome in NODE_FAILURE_OUTCOMES:
+                    problems.append(
+                        f"Nodo {name}: ultima corrida fallo (outcome='{outcome}', hace {age:.1f}h)."
+                    )
 
         # Dead-man-switch: telegram global (cualquier nodo lo manda)
         tg_iso = hb.get("last_telegram_iso")

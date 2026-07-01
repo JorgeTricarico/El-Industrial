@@ -80,6 +80,57 @@ def test_diagnose_alerta_si_3_ultimas_corridas_fallaron(tmp_path, monkeypatch):
     assert any("fallaron contra la API Bertual" in p for p in problems)
 
 
+def _write_multinode(tmp_path, nodes):
+    status_dir = tmp_path / "status"
+    status_dir.mkdir(exist_ok=True)
+    (status_dir / "heartbeat.json").write_text(json.dumps({"nodes": nodes}))
+    return status_dir
+
+
+def test_no_alerta_por_nodo_con_fallo_viejo(tmp_path, monkeypatch):
+    """El falso positivo que reporto Jorge: un backup con supplier_down VIEJO
+    (no volvio a correr) NO debe alertar si otro nodo esta fresco y ok."""
+    old = (datetime.now() - timedelta(hours=35)).isoformat()
+    recent = datetime.now().isoformat()
+    _write_multinode(tmp_path, {
+        "DESKTOP-MI43BOU": {"last_run": old, "last_outcome": "supplier_down", "status": "supplier_down"},
+        "raspberrypi": {"last_run": recent, "last_outcome": "updated", "status": "ok"},
+    })
+    monkeypatch.setattr(healthcheck, "STATUS_DIR", str(tmp_path / "status"))
+    monkeypatch.setattr(healthcheck, "detect_public_site_stale", lambda: [])
+    status, problems = healthcheck.diagnose()
+    assert status == "ok", f"un fallo viejo de un nodo que no volvio a correr no debe alertar: {problems}"
+
+
+def test_no_alerta_por_backup_que_dup_skipea(tmp_path, monkeypatch):
+    """Backup con last_run RECIENTE y last_outcome=dup_skip (sano) pero 'status'
+    VIEJO (supplier_down): no debe alertar. status queda viejo porque dup_skip
+    no corre update_products; usamos last_outcome que es el signal fresco."""
+    recent = datetime.now().isoformat()
+    _write_multinode(tmp_path, {
+        "DESKTOP-MI43BOU": {"last_run": recent, "last_outcome": "dup_skip", "status": "supplier_down"},
+        "raspberrypi": {"last_run": recent, "last_outcome": "updated", "status": "ok"},
+    })
+    monkeypatch.setattr(healthcheck, "STATUS_DIR", str(tmp_path / "status"))
+    monkeypatch.setattr(healthcheck, "detect_public_site_stale", lambda: [])
+    status, problems = healthcheck.diagnose()
+    assert status == "ok", f"un backup que dup_skipea no debe alertar: {problems}"
+
+
+def test_alerta_por_fallo_RECIENTE_de_nodo(tmp_path, monkeypatch):
+    """Si un nodo fallo RECIEN (last_outcome de fallo + reciente), SI alerta.
+    No perdemos deteccion de fallos reales al filtrar los viejos."""
+    recent = datetime.now().isoformat()
+    _write_multinode(tmp_path, {
+        "raspberrypi": {"last_run": recent, "last_outcome": "supplier_down", "status": "supplier_down"},
+    })
+    monkeypatch.setattr(healthcheck, "STATUS_DIR", str(tmp_path / "status"))
+    monkeypatch.setattr(healthcheck, "detect_public_site_stale", lambda: [])
+    status, problems = healthcheck.diagnose()
+    assert status == "alert"
+    assert any("ultima corrida fallo" in p for p in problems)
+
+
 def test_diagnose_alerta_si_supplier_down_sostenido(tmp_path, monkeypatch):
     """P13: 3 supplier_down seguidos = outage sostenido, debe alertar.
 
