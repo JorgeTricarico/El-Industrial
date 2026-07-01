@@ -454,6 +454,35 @@
 
 **FALTA (opcional)**: gatear `aiops_remediate` para que no se dispare en cada `supplier_down` aislado, sino recién cuando el detector marca outage sostenido. Se volvió menos urgente: el ruido nocturno venía de DESKTOP-MI43BOU (ya arreglado — corre 21:00 como backup → dup_skip). Hoy AIOps solo se dispara si un primary REAL (la Pi) no pudo fetchear, lo cual es señal legítima. AIOps se lanza desde DOS lugares (`run_daily.sh:222-223` y `nightly_report.py:_send_tech_alert`); cubrir ambos si se retoma.
 
+---
+
+### P14 — Fortalecer tests (fundamento del auto-fix seguro)
+
+- **status**: pending
+- **prioridad**: ALTA (es el gate del que depende `auto_fix`)
+- **estimado**: continuo
+
+**Contexto**: `scripts/auto_fix.py` (break-glass, 2026-07-01) confía en `pytest tests/` como juez objetivo antes de pushear un fix generado por agentes. Ese gate es tan fuerte como la cobertura. Si los tests son flojos, un fix malo pasa. También un E2E débil deja pasar regresiones que el cliente sí ve (Regla #2).
+
+**Scope**:
+- Cubrir la rama `backup` de `run_daily.sh` (dup_skip vía curl a raw.githubusercontent) — hoy sin test porque requiere mockear curl.
+- E2E contra prod más frecuente/estricto (Playwright + `post_deploy_check` + `e2e_telegram_simulate`).
+- Tests de las rutas de fallo de `update_products` (creds_missing, supplier_unknown, api_fail vs supplier_down) end-to-end.
+- Considerar que el agente VERIFICADOR de `auto_fix` exija que el fix venga con su test.
+
+**Acceptance**: cobertura medible (coverage report), y cada bug histórico (19 días, dedup filler, pull|tee enmascarado) con su test de regresión explícito.
+
+---
+
+### P15 — `auto_fix` (break-glass multi-agente) — HECHO 2026-07-01
+
+- **status**: completed (código + tests; falta ACTIVAR en la Pi vía `.env`)
+- **done**: 2026-07-01
+
+**Qué es**: `scripts/auto_fix.py`. Si pasan ≥3 días sin commit "Actualizacion automatica" en origin/main, dispara una cadena de agentes Antigravity (`agy`) especializados: **diagnóstico → fix → verificación adversarial → gate duro de pytest (wrapper) → push**. Cada agente corre aislado (contexto fresco, menos alucinación); el que verifica no es el que parcheó. El clon tiene origin local → ningún agente puede pushear a prod solo; el push lo hace el wrapper solo si pytest pasa. Guardrails: opt-in `AUTO_FIX_ENABLED`, cooldown 24h, timeouts, auditoría Telegram+metrics. Se invoca desde `healthcheck.main()` (auto-gated).
+
+**Para ACTIVARLO** (Regla #3 — decisión del user): agregar `AUTO_FIX_ENABLED=1` al `.env` de la Pi (nodo estable que corre healthcheck). Opcional: `AUTO_FIX_STALE_HOURS`, `AUTO_FIX_COOLDOWN_HOURS`, `AUTO_FIX_AGENT_BIN`. Depende de P14: no activar en serio hasta tener el gate de tests robusto.
+
 **Problema**: hoy NO existe un detector de "Bertual caído N corridas seguidas". Un `supplier_down` aislado es esperado y manejado (filler Lun-Sab). Pero un outage REAL sostenido del proveedor solo escalaría por edad de la data publicada (`healthcheck.detect_public_site_stale`, recién a 26h/50h). Entre medio, cada corrida dispara AIOps + Telegram técnico individualmente (ruido) sin distinguir "hipo transitorio" de "outage real".
 
 **Contexto**: descubierto en la auditoría del 2026-07-01. El ruido nocturno que motivó la sesión NO era esto (era el nodo DESKTOP-MI43BOU corriendo a medianoche como primary mal resuelto — ya arreglado). Pero al analizarlo quedó expuesto que no hay un umbral de severidad por acumulación.

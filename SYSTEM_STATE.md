@@ -20,7 +20,7 @@
 - **Fecha:** 2026-07-01
 - **Agente:** Claude Opus 4.8 (sesión de Jorge)
 - **Commit head al cierre:** ver git log
-- **Tests:** 202 ✅
+- **Tests:** 212 ✅
 - **Producción:** verde — Pi corrió 01/07 10:00 AR (`outcome=updated`). Data del 01/07 en repo.
 
 ---
@@ -92,6 +92,7 @@
 
 > Solo cambios que afectan operación. Detalles en git log.
 
+- **2026-07-01** `scripts/auto_fix.py` (break-glass, P15): auto-fix multi-agente para outage de ≥3 días sin update. Cadena `agy`: diagnóstico → fix → verificación adversarial → gate pytest (wrapper) → push. Clon aislado (agente no pushea a prod), opt-in `AUTO_FIX_ENABLED` (default OFF), cooldown 24h. **NO activado aún** — requiere `AUTO_FIX_ENABLED=1` en `.env` de la Pi. Depende de P14 (tests robustos).
 - **2026-07-01** `healthcheck.diagnose()` (P13 parcial): escala si las últimas 3 corridas fallaron con `supplier_down` o `api_fail`. Antes solo miraba `api_fail` → un outage sostenido de `supplier_down` era invisible hasta el stale-check de 26h. Un `supplier_down` aislado sigue sin alertar (lo cubre el filler).
 - **2026-07-01** Crontab de DESKTOP-MI43BOU: `0 0` → `0 21 * * 1-6` (drift de TZ: se computó para UTC y el reloj de WSL pasó a AR). Ahora corre después del run de las 20:00 de la Pi → `dup_skip`, sin ruido nocturno.
 - **2026-07-01** `run_daily.sh` + `node_pulse.effective_role`: el rol operativo ahora se resuelve desde `infra/nodes.yml` (via `--resolve-role`), con override env y fallback legacy. Antes cualquier host que no dijera "mint" se auto-elegía `primary` — DESKTOP-MI43BOU (backup) se creía primary y pegaba a Bertual de madrugada. `supplier_down` (exit 3) ahora loguea `AVISO` en vez de `CRITICO` (era ruido sobre condición esperada/manejada).
@@ -113,6 +114,7 @@
 - `nightly_report.process_tenant_report` permite supersede solo si `last_telegram_provider.startswith("filler_")`. Si renombrás los providers filler (ej. `filler_supplier_down` → `no_supplier`), el supersede deja de disparar.
 - `run_daily.sh` pull principal (línea ~53) NO debe volver a usar `| tee`: enmascara el exit de git y rompe el abort en pull-fail (vuelve el bug de data vieja). Si necesitás ver el output en vivo, agregá `set -o pipefail` con cuidado (hay otros pipes con `grep` que saldrían 1 sin match).
 - Rol operativo del nodo lo decide `node_pulse.effective_role` desde `nodes.yml`. Si sumás un nodo y no lo registrás ahí, cae al fallback legacy (no-"mint" ⇒ primary) y podría pushear duplicado. Registralo en `nodes.yml`.
+- `auto_fix.py` es un ARMA CARGADA (agente autónomo que pushea a prod si pytest pasa). Guardrails que NO se tocan: gate de pytest lo corre el WRAPPER (no el agente), clon con origin local (el agente no llega a GitHub), opt-in por `.env`, cooldown. Su seguridad depende de la fuerza de los tests (P14). No activar en la Pi hasta que la cobertura sea sólida.
 
 ---
 

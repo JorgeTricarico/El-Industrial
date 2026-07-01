@@ -67,6 +67,8 @@ Lista canonica al 2026-05-17 (mantener sincronizada al sumar módulos):
 - `sync_tenants` — (futuro: HTTP a Netlify, ver Regla #1bis)
 - `system_audit` — `send_alert`
 - `alert_throttle` — `STATUS_DIR`
+- `aiops_remediate` — `send_telegram`, `STATUS_DIR`
+- `auto_fix` — `send_telegram`, `STATUS_DIR`
 
 ### Cómo agregar un módulo nuevo con efectos externos
 

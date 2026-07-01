@@ -365,8 +365,25 @@ def send_alert(problems):
     return sent_count > 0
 
 
+def _maybe_auto_fix():
+    """Dispara el auto-fix de ultimo recurso si esta habilitado en este nodo y
+    el problema es grave y sostenido. No-op en nodos sin AUTO_FIX_ENABLED.
+
+    Auto-gated: auto_fix.should_run() decide (enabled + dias sin update +
+    cooldown). Aca solo evitamos el costo si ni siquiera esta habilitado.
+    """
+    try:
+        sys.path.insert(0, SCRIPT_DIR)
+        import auto_fix
+        if auto_fix.is_enabled():
+            auto_fix.main()
+    except Exception as e:
+        print(f"[auto_fix] no se pudo evaluar: {type(e).__name__}: {e}", file=sys.stderr)
+
+
 def main():
     status, problems = diagnose()
+    _maybe_auto_fix()
     if status == "ok":
         print("OK: sistema saludable.")
         return 0

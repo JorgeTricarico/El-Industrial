@@ -28,7 +28,7 @@ def _isolate_status_dir(tmp_path, monkeypatch):
     # No creamos el directorio: cada script hace os.makedirs(..., exist_ok=True)
     # cuando lo necesita. Crear aca rompe tests que esperan un dir vacio.
     status_dir = tmp_path / "status"
-    for mod_name in ("nightly_report", "update_products", "healthcheck", "system_audit", "alert_throttle"):
+    for mod_name in ("nightly_report", "update_products", "healthcheck", "system_audit", "alert_throttle", "auto_fix"):
         if mod_name in sys.modules:
             monkeypatch.setattr(sys.modules[mod_name], "STATUS_DIR", str(status_dir), raising=False)
     yield status_dir
@@ -50,7 +50,7 @@ def _block_telegram_sends(request, monkeypatch):
     def _noop(*_a, **_kw):
         return False
 
-    for mod_name in ("post_deploy_check", "healthcheck", "nightly_report", "system_audit"):
+    for mod_name in ("post_deploy_check", "healthcheck", "nightly_report", "system_audit", "auto_fix", "aiops_remediate"):
         if mod_name in sys.modules:
             mod = sys.modules[mod_name]
             if hasattr(mod, "send_alert"):
