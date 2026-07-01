@@ -17,11 +17,11 @@
 
 ## Última actualización
 
-- **Fecha:** 2026-05-23
-- **Agente:** Claude Sonnet 4.6 (sesión de Jorge)
+- **Fecha:** 2026-07-01
+- **Agente:** Claude Opus 4.8 (sesión de Jorge)
 - **Commit head al cierre:** ver git log
-- **Tests:** 183 ✅
-- **Producción:** verde — `el-industrial.netlify.app` sirviendo data del 22/05. Pi corrió 23/05 10:00 AR (2 nuevos productos).
+- **Tests:** 199 ✅
+- **Producción:** verde — Pi corrió 01/07 10:00 AR (`outcome=updated`). Data del 01/07 en repo.
 
 ---
 
@@ -30,7 +30,7 @@
 | hostname           | rol                | online    | last_run AR        | last_telegram_iso       | notas |
 |--------------------|--------------------|-----------|--------------------|-------------------------|-------|
 | raspberrypi        | primary            | ✅ vía TS | 2026-05-21 08:31  | 2026-05-21 (real send)  | Cron `0 10,20,22 * * 1-6`. 10:00 agregado 2026-05-21. |
-| DESKTOP-MI43BOU    | backup             | ⚠️ WSL    | 2026-05-18 21:00  | —                       | Cron `0 0 * * 1-6` UTC. Dispara solo si Windows despierto. |
+| DESKTOP-MI43BOU    | backup             | ⚠️ WSL    | 2026-06-30 00:01  | —                       | Rol ahora resuelto desde `nodes.yml` (backup). **PENDIENTE user**: crontab local dice `0 0 * * 1-6` y el reloj de WSL pasó a AR → dispara a medianoche AR (antes de todo run de la Pi) → `supplier_down`. Fix: `crontab -e` → `0 21 * * 1-6`. |
 | rv420              | backup             | ✅ vía TS | nunca             | —                       | `pending_onboard`. Sin repo clonado todavía. |
 | linux-mint         | backup             | ❌        | hace 10+ días     | —                       | Offline en Tailscale. Cuando vuelva, bumpear a `active`. |
 | github-actions     | cloud_last_resort  | ✅        | 2026-05-20 03:32  | 2026-05-20 (filler)     | Solo filler. Para actualizar real necesita Tailscale (ver gaps). |
@@ -92,6 +92,8 @@
 
 > Solo cambios que afectan operación. Detalles en git log.
 
+- **2026-07-01** `run_daily.sh` + `node_pulse.effective_role`: el rol operativo ahora se resuelve desde `infra/nodes.yml` (via `--resolve-role`), con override env y fallback legacy. Antes cualquier host que no dijera "mint" se auto-elegía `primary` — DESKTOP-MI43BOU (backup) se creía primary y pegaba a Bertual de madrugada. `supplier_down` (exit 3) ahora loguea `AVISO` en vez de `CRITICO` (era ruido sobre condición esperada/manejada).
+- **2026-07-01** `run_daily.sh:53` bug latente: el `git pull ... | tee` enmascaraba el exit de git (el `if` veía el exit de `tee`=0). Un pull fallido seguía con código stale en vez de abortar (exit 2) — la protección anti-data-vieja del bug 19-may estaba rota. Fix: redirigir al log sin pipe. Test `test_pull_fail_aborts_with_exit_2` vuelve a verde.
 - **2026-05-23** `healthcheck.detect_public_site_stale`: skip tenants testing + edad medida desde `file_date+20h` en vez de medianoche. Elimina falso positivo diario donde el runner de GH Actions (2-3h tarde) reportaba "deploy no llegando" aunque el deploy era reciente.
 - **2026-05-21** Pi crontab: agregado `0 10 * * 1-6` (10:00 AR Lun-Sab). Cierra gap G5: cliente abre temprano y ve precios del día. Antes solo corría 20:00 + 22:00 AR.
 - **2026-05-20** `3f85890` Plan B (Bertual desde runner) fail-fast 30s — probado que no funciona, IPs GH bloqueadas.
@@ -107,6 +109,8 @@
 - `run_daily.sh` aborta con exit 2 en pull fail. Si volvés a continuar-con-código-stale, vuelve el bug del 19-may.
 - `post_deploy_check.py` salta freshness check si `state == "testing"`. Si cambiás el state machine, revisar.
 - `nightly_report.process_tenant_report` permite supersede solo si `last_telegram_provider.startswith("filler_")`. Si renombrás los providers filler (ej. `filler_supplier_down` → `no_supplier`), el supersede deja de disparar.
+- `run_daily.sh` pull principal (línea ~53) NO debe volver a usar `| tee`: enmascara el exit de git y rompe el abort en pull-fail (vuelve el bug de data vieja). Si necesitás ver el output en vivo, agregá `set -o pipefail` con cuidado (hay otros pipes con `grep` que saldrían 1 sin match).
+- Rol operativo del nodo lo decide `node_pulse.effective_role` desde `nodes.yml`. Si sumás un nodo y no lo registrás ahí, cae al fallback legacy (no-"mint" ⇒ primary) y podría pushear duplicado. Registralo en `nodes.yml`.
 
 ---
 

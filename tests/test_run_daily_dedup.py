@@ -59,6 +59,7 @@ def fake_repo(tmp_path):
     (local / "scripts" / "sync_tenants.py").write_text("import sys; sys.exit(0)\n")
     (local / "scripts" / "post_deploy_check.py").write_text("import sys; sys.exit(0)\n")
     (local / "scripts" / "nightly_report.py").write_text("import sys; sys.exit(0)\n")
+    (local / "scripts" / "aiops_remediate.py").write_text("import sys; sys.exit(0)\n")
     (local / ".env").write_text("")
     # No venv: el script cae al system python3 (que igualmente no se necesita
     # porque hacemos dup_skip antes de invocar update_products).
@@ -143,6 +144,40 @@ def test_dedup_ignores_pulse_commits(fake_repo):
     result = _run_script(fake_repo)
     assert "dup_skip" not in result.stdout, \
         f"Pulse commit engaño al dedup. stdout={result.stdout[-500:]}"
+
+
+def test_supplier_down_logs_aviso_not_critico(fake_repo):
+    """supplier_down (exit 3) es esperado/manejado: debe loguear AVISO, no CRITICO.
+
+    Regresion del ruido nocturno (fix 2026-07-01): un exit 3 se logueaba como
+    'CRITICO: update_products fallo con codigo 3' — palabra alarmista para una
+    condicion que el filler Lun-Sab ya cubre. Debe decir AVISO y salir 3."""
+    (fake_repo / "scripts" / "update_products.py").write_text("import sys; sys.exit(3)\n")
+    _git(fake_repo, "add", ".")
+    _git(fake_repo, "commit", "-m", "stub: update_products exit 3 (supplier_down)")
+    _git(fake_repo, "push", "origin", "main")
+
+    result = _run_script(fake_repo)
+    out = result.stdout + result.stderr
+    assert "AVISO: proveedor no respondio" in out, \
+        f"Esperaba wording AVISO para supplier_down. stdout={out[-500:]}"
+    assert "CRITICO: update_products" not in out, \
+        f"supplier_down NO debe loguear CRITICO. stdout={out[-500:]}"
+    assert result.returncode == 3
+
+
+def test_non_supplier_failure_still_critico(fake_repo):
+    """Un fallo inesperado (exit != 3) SI debe seguir siendo CRITICO."""
+    (fake_repo / "scripts" / "update_products.py").write_text("import sys; sys.exit(5)\n")
+    _git(fake_repo, "add", ".")
+    _git(fake_repo, "commit", "-m", "stub: update_products exit 5 (fallo inesperado)")
+    _git(fake_repo, "push", "origin", "main")
+
+    result = _run_script(fake_repo)
+    out = result.stdout + result.stderr
+    assert "CRITICO: update_products fallo con codigo 5" in out, \
+        f"Fallo inesperado debe seguir siendo CRITICO. stdout={out[-500:]}"
+    assert result.returncode == 5
 
 
 def test_pull_fail_aborts_with_exit_2(fake_repo):

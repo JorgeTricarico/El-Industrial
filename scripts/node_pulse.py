@@ -53,14 +53,51 @@ def declared_role(hostname):
     return "unknown"
 
 
+def effective_role(hostname, env_role=None):
+    """Resuelve el rol OPERATIVO del nodo: "primary" o "backup".
+
+    Es la fuente de verdad unica que consume run_daily.sh (via --resolve-role)
+    para decidir si el nodo pushea precios reales. Prioridad:
+
+      1. env_role explicito (EL_INDUSTRIAL_ROLE) si es valido.
+      2. Rol declarado en infra/nodes.yml para este hostname:
+         primary -> primary; backup|dev|cloud_last_resort -> backup.
+      3. Fallback legacy (host no registrado): hostname con "mint" -> backup;
+         cualquier otro -> primary.
+
+    El bug que motiva esto (2026-07-01): DESKTOP-MI43BOU esta declarado como
+    backup en nodes.yml pero el fallback legacy elegia primary para todo host
+    que no dijera "mint" — asi un backup mal registrado se auto-elegia primary
+    y le pegaba a Bertual de madrugada generando ruido supplier_down.
+    """
+    if env_role:
+        er = env_role.strip().lower()
+        if er in ("primary", "backup", "dev"):
+            return "primary" if er == "primary" else "backup"
+    declared = declared_role(hostname)
+    if declared == "primary":
+        return "primary"
+    if declared in ("backup", "dev", "cloud_last_resort"):
+        return "backup"
+    # Host no registrado en nodes.yml: fallback legacy por hostname.
+    return "backup" if "mint" in hostname.lower() else "primary"
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--outcome", default="started",
                         help="started|updated|dup_skip|supplier_fail|push_fail|finished")
     parser.add_argument("--note", default="", help="Detalle libre (max 200 chars)")
+    parser.add_argument("--resolve-role", action="store_true",
+                        help="Imprime el rol operativo (primary|backup) y sale, sin tocar heartbeat.")
     args = parser.parse_args(argv)
 
     hostname = socket.gethostname()
+
+    if args.resolve_role:
+        print(effective_role(hostname, os.environ.get("EL_INDUSTRIAL_ROLE")))
+        return 0
+
     fields = {
         "last_run": datetime.now().isoformat(),
         "last_outcome": args.outcome[:40],

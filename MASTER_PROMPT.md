@@ -444,6 +444,28 @@
 
 ---
 
+### P13 — Detector de `supplier_down` sostenido (N corridas consecutivas)
+
+- **status**: pending
+- **prioridad**: MEDIA (cierra gap de observabilidad detectado 2026-07-01)
+- **estimado**: 1-2h
+
+**Problema**: hoy NO existe un detector de "Bertual caído N corridas seguidas". Un `supplier_down` aislado es esperado y manejado (filler Lun-Sab). Pero un outage REAL sostenido del proveedor solo escalaría por edad de la data publicada (`healthcheck.detect_public_site_stale`, recién a 26h/50h). Entre medio, cada corrida dispara AIOps + Telegram técnico individualmente (ruido) sin distinguir "hipo transitorio" de "outage real".
+
+**Contexto**: descubierto en la auditoría del 2026-07-01. El ruido nocturno que motivó la sesión NO era esto (era el nodo DESKTOP-MI43BOU corriendo a medianoche como primary mal resuelto — ya arreglado). Pero al analizarlo quedó expuesto que no hay un umbral de severidad por acumulación.
+
+**Scope**:
+- `healthcheck.py` o `system_audit.py`: contar `supplier_down` consecutivos en `metrics.jsonl` (por tenant). Si supera umbral (ej. 3 corridas o >X horas), escalar a alerta CRÍTICA diferenciada del hipo transitorio.
+- Gatear el disparo de `aiops_remediate` para que NO se lance en cada `supplier_down` aislado, sino recién cuando el detector marca outage sostenido. OJO: hoy AIOps se dispara desde DOS lugares (`run_daily.sh:222-223` y `nightly_report.py:_send_tech_alert`). Cubrir ambos.
+
+**Acceptance**:
+- `pytest tests/` verde con test del detector (streak que matchea `supplier_down`, no solo `api_fail`).
+- Un `supplier_down` aislado → sin AIOps, sin alerta crítica.
+- N `supplier_down` consecutivos → 1 alerta crítica (no N).
+- NO reduce la cobertura del bug de los 19 días: un outage real sigue escalando (Regla #2).
+
+---
+
 ## Items completados
 
 (Vacío al 2026-05-17. Cuando vayas cerrando, moverlos acá con su SHA y fecha.)

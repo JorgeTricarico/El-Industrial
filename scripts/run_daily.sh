@@ -50,7 +50,12 @@ PULSE_PY="$SCRIPT_DIR/node_pulse.py"
 # reintentamos UNA VEZ antes de abortar (fix loop de death 29-may-2026).
 log_message "Auto-pull: git pull --rebase --autostash origin main..."
 PULL_ERR_FILE=$(mktemp)
-if git pull --rebase --autostash origin main --quiet 2>"$PULL_ERR_FILE" | tee -a "$LOG_FILE"; then
+# IMPORTANTE: NO usar `| tee` aca. El `if` evalua el exit del ULTIMO comando del
+# pipe (tee, que siempre sale 0), enmascarando un fallo de git pull. Sin pipefail
+# eso hacia que el script siguiera con codigo stale en vez de abortar (exit 2) —
+# la causa raiz del bug de data vieja (19-may / 2-dias). Redirigimos directo al
+# log para que el `if` vea el exit real de git. (fix 2026-07-01)
+if git pull --rebase --autostash origin main --quiet >>"$LOG_FILE" 2>"$PULL_ERR_FILE"; then
     rm -f "$PULL_ERR_FILE"
     NEW_HEAD=$(git rev-parse --short HEAD 2>/dev/null)
     log_message "Pull OK. HEAD=$NEW_HEAD"
@@ -158,10 +163,17 @@ if [ "${REAL_UPDATE_TODAY:-0}" -gt 0 ]; then
 fi
 
 # --- Rol del nodo: primary o backup ---
-# Se configura en .env de cada nodo (EL_INDUSTRIAL_ROLE=primary|backup).
-# Fallback: hostname contiene "mint" => backup (compatibilidad con setups viejos).
+# Fuente de verdad: infra/nodes.yml (via node_pulse.effective_role), con
+# override por env EL_INDUSTRIAL_ROLE y fallback legacy (hostname "mint").
+# Antes cualquier host que no dijera "mint" se auto-elegia primary — un backup
+# mal registrado (DESKTOP-MI43BOU) se creia primary y pegaba a Bertual de
+# madrugada generando ruido supplier_down (fix 2026-07-01).
 ROLE="${EL_INDUSTRIAL_ROLE:-}"
+if [ -z "$ROLE" ] && [ -f "$PULSE_PY" ]; then
+    ROLE=$("${VENV_PATH}/bin/python" "$PULSE_PY" --resolve-role 2>/dev/null || true)
+fi
 if [ -z "$ROLE" ]; then
+    # Ultima red si python/venv no esta disponible: hostname "mint" => backup.
     if [[ "${HOSTNAME,,}" == *"mint"* ]]; then
         ROLE="backup"
     else
@@ -207,11 +219,16 @@ UPDATE_STDERR_SNIPPET=$(head -c 500 "$UPDATE_STDERR_FILE")
 rm -f "$UPDATE_STDERR_FILE"
 
 if [ $PY_EXIT_CODE -ne 0 ]; then
-    log_message "CRITICO: update_products fallo con codigo $PY_EXIT_CODE."
     if [ $PY_EXIT_CODE -eq 3 ]; then
+        # supplier_down es una condicion ESPERADA y manejada: el proveedor no
+        # respondio (timeout/500). El filler garantizado Lun-Sab cubre al
+        # cliente igual. NO es CRITICO — reservamos esa palabra para fallos
+        # inesperados (exit != 3). Ver CLAUDE.md Regla #2 (no sobre-alarmar).
+        log_message "AVISO: proveedor no respondio (supplier_down, exit 3). El filler Lun-Sab cubre al cliente."
         pulse "supplier_down" "proveedor caido (timeout/500)"
         FAIL_REASON="supplier_down: API de Bertual caida o timeout. Exit=$PY_EXIT_CODE. Stderr: $UPDATE_STDERR_SNIPPET"
     else
+        log_message "CRITICO: update_products fallo con codigo $PY_EXIT_CODE."
         pulse "supplier_fail" "update_products exit=$PY_EXIT_CODE"
         FAIL_REASON="supplier_fail: update_products exit=$PY_EXIT_CODE. Stderr: $UPDATE_STDERR_SNIPPET"
     fi
