@@ -196,6 +196,8 @@ def prompt_fix(diagnosis):
         "- Cambios acotados, no refactors. Respeta CLAUDE.md.\n"
         "- Si el diagnostico dice 'SIN FIX APLICABLE', NO inventes un cambio: "
         "no toques nada.\n"
+        "- INCLUI un test de regresion en tests/ que falle SIN tu fix y pase "
+        "CON el. Un fix sin test no vale (el gate de pytest es la unica red).\n"
         "- Commitea localmente con un mensaje claro. NO hagas push (un wrapper "
         "externo corre los tests y pushea solo si pasan)."
     )
@@ -209,7 +211,8 @@ def prompt_verify(diff):
         "Evalualo con ojo critico, tratando de REFUTARLO. NO modifiques nada. "
         "Considera: ¿ataca la causa raiz o es cosmetico? ¿es minimo? ¿puede romper "
         "el deploy, el dedup commit-marker, o los efectos externos (Regla #1)? "
-        "¿toca secretos? ¿podria ocultar un outage real (Regla #2)?\n"
+        "¿toca secretos? ¿podria ocultar un outage real (Regla #2)? ¿el fix "
+        "viene con un test de regresion que lo cubra? Si NO trae test, RECHAZALO.\n"
         "Respuesta: en la PRIMERA linea escribi EXACTAMENTE 'APROBADO' o "
         "'RECHAZADO', y despues una razon breve."
     )
