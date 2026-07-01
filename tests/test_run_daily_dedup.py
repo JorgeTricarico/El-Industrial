@@ -180,6 +180,47 @@ def test_non_supplier_failure_still_critico(fake_repo):
     assert result.returncode == 5
 
 
+def test_backup_dup_skip_cuando_primary_ya_genero(fake_repo):
+    """Rama backup (antes sin cobertura): si el primary ya publico el archivo
+    del dia en GitHub, el backup hace dup_skip y sale 0 SIN correr
+    update_products. Es el escenario DESKTOP-MI43BOU como backup.
+
+    Mockeamos curl (--head --fail al raw de GitHub) con un fake que sale 0."""
+    fakebin = fake_repo / "fakebin"
+    fakebin.mkdir()
+    curl = fakebin / "curl"
+    curl.write_text("#!/bin/bash\nexit 0\n")  # simula: el archivo YA existe
+    curl.chmod(0o755)
+
+    result = _run_script(fake_repo, extra_env={
+        "EL_INDUSTRIAL_ROLE": "backup",
+        "PATH": f"{fakebin}:{os.environ['PATH']}",
+    })
+    out = result.stdout + result.stderr
+    assert result.returncode == 0
+    assert "dup_skip" in out, f"backup debio hacer dup_skip. stdout={out[-500:]}"
+    assert "update_products" not in out, \
+        f"backup no debio llegar a update_products. stdout={out[-500:]}"
+
+
+def test_backup_procede_si_primary_no_genero(fake_repo):
+    """Si el archivo del dia NO existe en GitHub (curl --fail sale !=0), el
+    backup NO hace dup_skip: procede como backup a generar precios."""
+    fakebin = fake_repo / "fakebin"
+    fakebin.mkdir()
+    curl = fakebin / "curl"
+    curl.write_text("#!/bin/bash\nexit 22\n")  # simula: 404, archivo no existe
+    curl.chmod(0o755)
+
+    result = _run_script(fake_repo, extra_env={
+        "EL_INDUSTRIAL_ROLE": "backup",
+        "PATH": f"{fakebin}:{os.environ['PATH']}",
+    })
+    out = result.stdout + result.stderr
+    assert "No se encontro el archivo de hoy" in out, \
+        f"backup debio proceder al no encontrar el archivo. stdout={out[-500:]}"
+
+
 def test_pull_fail_aborts_with_exit_2(fake_repo):
     """Si git pull falla (ej. remote inalcanzable), abortar con exit 2.
 

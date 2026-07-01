@@ -203,6 +203,83 @@ def test_process_tenant_ok_end_to_end(tmp_path, monkeypatch):
     assert (tenant_root / "status" / "daily_accum.json").exists()
 
 
+def _fake_supplier_ok():
+    s = MagicMock()
+    s.name = "Bertual"
+    s.required_creds = ()
+    return s
+
+
+def test_process_tenant_supplier_down_classification(monkeypatch):
+    """Un error de red/timeout/500 clasifica como supplier_down (-> exit 3)."""
+    monkeypatch.setattr(update_products.suppliers, "get", lambda _: _fake_supplier_ok())
+    monkeypatch.setattr(update_products, "load_tenant_creds", lambda slug: {})
+    monkeypatch.setattr(update_products, "load_tenant_config", lambda slug: {})
+    monkeypatch.setattr(update_products, "fetch_with_retries",
+                        lambda s, c: (None, None, "Bertual login fallo tras 3 intentos: HTTP Error 500"))
+    res = update_products.process_tenant({"slug": "x", "supplier": "Bertual", "state": "active"})
+    assert res["status"] == "supplier_down"
+
+
+def test_process_tenant_api_fail_classification(monkeypatch):
+    """Un error que NO es de red (ej. 401) clasifica como api_fail (-> exit 1)."""
+    monkeypatch.setattr(update_products.suppliers, "get", lambda _: _fake_supplier_ok())
+    monkeypatch.setattr(update_products, "load_tenant_creds", lambda slug: {})
+    monkeypatch.setattr(update_products, "load_tenant_config", lambda slug: {})
+    monkeypatch.setattr(update_products, "fetch_with_retries",
+                        lambda s, c: (None, None, "HTTP Error 401: Unauthorized (credencial invalida)"))
+    res = update_products.process_tenant({"slug": "x", "supplier": "Bertual", "state": "active"})
+    assert res["status"] == "api_fail"
+
+
+def _main_with(monkeypatch, tmp_path, results_by_slug):
+    """Corre main() con process_tenant mockeado a resultados por slug."""
+    monkeypatch.setattr(update_products, "STATUS_DIR", str(tmp_path / "status"))
+    monkeypatch.setattr(update_products, "check_node_status", lambda ip: "offline")
+    tenants = [{"slug": s, "supplier": "Bertual", "state": "active"} for s in results_by_slug]
+    monkeypatch.setattr(update_products, "load_registry", lambda: tenants)
+    monkeypatch.setattr(update_products, "process_tenant",
+                        lambda t, silent=False: results_by_slug[t["slug"]])
+    return update_products.main([])
+
+
+def test_main_exit_3_cuando_todo_supplier_down(monkeypatch, tmp_path):
+    """Contrato critico: si TODO falla por proveedor caido -> exit 3.
+    run_daily.sh keyea el AVISO (no CRITICO) y el auto-fix de este codigo."""
+    rc = _main_with(monkeypatch, tmp_path, {
+        "a": {"slug": "a", "status": "supplier_down", "updates": 0, "new": 0, "error": "500"},
+    })
+    assert rc == 3
+    import heartbeat_io
+    hb = heartbeat_io.read(str(tmp_path / "status"))
+    node = next(iter(hb["nodes"].values()))
+    assert node["status"] == "supplier_down"
+
+
+def test_main_exit_1_cuando_todo_api_fail(monkeypatch, tmp_path):
+    """Si TODO falla pero NO por proveedor caido -> exit 1 (fallo inesperado)."""
+    rc = _main_with(monkeypatch, tmp_path, {
+        "a": {"slug": "a", "status": "api_fail", "updates": 0, "new": 0, "error": "401"},
+    })
+    assert rc == 1
+
+
+def test_main_exit_0_cuando_parcial(monkeypatch, tmp_path):
+    """Si al menos un tenant succeeded, exit 0 aunque otro falle (partial_fail)."""
+    rc = _main_with(monkeypatch, tmp_path, {
+        "a": {"slug": "a", "status": "ok", "updates": 2, "new": 1, "error": None},
+        "b": {"slug": "b", "status": "supplier_down", "updates": 0, "new": 0, "error": "500"},
+    })
+    assert rc == 0
+
+
+def test_main_exit_0_cuando_todo_ok(monkeypatch, tmp_path):
+    rc = _main_with(monkeypatch, tmp_path, {
+        "a": {"slug": "a", "status": "ok", "updates": 5, "new": 0, "error": None},
+    })
+    assert rc == 0
+
+
 def test_main_no_registry(monkeypatch, tmp_path, capsys):
     monkeypatch.setattr(update_products, "REGISTRY", str(tmp_path / "no.yml"))
     monkeypatch.setattr(update_products, "STATUS_DIR", str(tmp_path / "status"))

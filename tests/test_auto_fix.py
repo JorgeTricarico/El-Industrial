@@ -82,6 +82,22 @@ def test_verdict_approved_parsing():
     assert auto_fix._verdict_approved("el cambio parece razonable") is False
 
 
+def test_hours_since_last_real_update_parsea_git(monkeypatch):
+    """Parsea el %cI del ultimo commit 'Actualizacion automatica' de origin/main."""
+    iso = (datetime.now() - timedelta(hours=50)).isoformat()
+    monkeypatch.setattr(auto_fix.subprocess, "run", lambda *a, **k: None)
+    monkeypatch.setattr(auto_fix.subprocess, "check_output", lambda *a, **k: iso.encode())
+    hrs = auto_fix.hours_since_last_real_update()
+    assert hrs is not None and 49 < hrs < 51
+
+
+def test_hours_since_none_si_no_hay_commits(monkeypatch):
+    """Sin commits de update (output vacio) -> None (no dispara auto-fix)."""
+    monkeypatch.setattr(auto_fix.subprocess, "run", lambda *a, **k: None)
+    monkeypatch.setattr(auto_fix.subprocess, "check_output", lambda *a, **k: b"")
+    assert auto_fix.hours_since_last_real_update() is None
+
+
 def test_main_no_dispara_agente_si_no_corresponde(monkeypatch):
     """main() con should_run False NO debe invocar run_autofix."""
     monkeypatch.delenv("AUTO_FIX_ENABLED", raising=False)

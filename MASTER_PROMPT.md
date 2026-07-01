@@ -458,9 +458,21 @@
 
 ### P14 — Fortalecer tests (fundamento del auto-fix seguro)
 
-- **status**: pending
+- **status**: in_progress (batch 1 hecho 2026-07-01; coverage 56%→58%)
 - **prioridad**: ALTA (es el gate del que depende `auto_fix`)
 - **estimado**: continuo
+
+**PROGRESO batch 1 (2026-07-01, +10 tests, 222 total)**:
+- ✅ Matriz de severidad de `update_products.main()`: exit 0 (ok / partial_fail), exit 3 (todo supplier_down), exit 1 (todo api_fail). Es el contrato que `run_daily.sh` y `auto_fix` consumen. `update_products.py` 69%→85%.
+- ✅ Clasificación `process_tenant`: supplier_down (red/timeout/500) vs api_fail (otros).
+- ✅ Rama `backup` de `run_daily.sh` (dup_skip vía curl) — antes 0% cubierta. Fake curl en PATH.
+- ✅ `auto_fix`: trigger `hours_since_last_real_update` + parser de veredicto `_verdict_approved`.
+
+**FALTA (siguiente batch)**:
+- Test de la orquestación completa de `run_autofix` (verify_rejected y tests_failed BLOQUEAN el push; pushed solo con verdict aprobado + pytest verde). Requiere refactor menor para inyectar el runner de agentes/git y testear sin subprocess real. Es el test más importante del "arma cargada".
+- `nightly_report.py` (68%): rutas de fallback y fillers.
+- `system_audit.py` (60%), `post_deploy_check.py` (50%).
+- Coverage report en CI + gate mínimo (ej. no bajar de X%).
 
 **Contexto**: `scripts/auto_fix.py` (break-glass, 2026-07-01) confía en `pytest tests/` como juez objetivo antes de pushear un fix generado por agentes. Ese gate es tan fuerte como la cobertura. Si los tests son flojos, un fix malo pasa. También un E2E débil deja pasar regresiones que el cliente sí ve (Regla #2).
 
