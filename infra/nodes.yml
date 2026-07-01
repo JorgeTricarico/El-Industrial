@@ -30,6 +30,17 @@ nodes:
       Nodo primario. Cron real, fetcha Bertual. SD card es punto unico de
       falla — si muere, los demas nodos cubren.
 
+  - hostname: raspberrypi5
+    role: backup
+    cron: "15 20 * * 1-6"          # 20:15 AR (offset +15m del primary)
+    location: "Tailscale 100.66.50.66"
+    can_fetch_supplier: true
+    can_push_github: true
+    state: active
+    notes: |
+      Raspberry Pi 5 dedicada, always-on. Backup robusto: si la Pi primaria
+      cae, cubre 15min despues. Onboarded 2026-07-01. TZ del sistema en AR.
+
   - hostname: DESKTOP-MI43BOU
     role: backup
     cron: "0 21 * * 1-6"           # Lun-Sab 21:00 AR (offset +1h del primary)
