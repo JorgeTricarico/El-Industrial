@@ -30,6 +30,7 @@
 | hostname           | rol                | online    | last_run AR        | last_telegram_iso       | notas |
 |--------------------|--------------------|-----------|--------------------|-------------------------|-------|
 | raspberrypi        | primary            | ✅ vía TS | 2026-05-21 08:31  | 2026-05-21 (real send)  | Cron `0 10,20,22 * * 1-6`. 10:00 agregado 2026-05-21. |
+| raspberrypi5       | backup             | ✅ vía TS | 2026-07-01 18:59  | —                       | Onboarded 2026-07-01. Pi 5 aarch64 always-on, TZ AR. Cron `15 20 * * 1-6` (20:15 AR). Deploy key propia (read-write). dup_skip OK verificado. |
 | DESKTOP-MI43BOU    | backup             | ⚠️ WSL    | 2026-06-30 00:01  | —                       | Rol ahora resuelto desde `nodes.yml` (backup). **PENDIENTE user**: crontab local dice `0 0 * * 1-6` y el reloj de WSL pasó a AR → dispara a medianoche AR (antes de todo run de la Pi) → `supplier_down`. Fix: `crontab -e` → `0 21 * * 1-6`. |
 | rv420              | backup             | ✅ vía TS | nunca             | —                       | `pending_onboard`. Sin repo clonado todavía. |
 | linux-mint         | backup             | ❌        | hace 10+ días     | —                       | Offline en Tailscale. Cuando vuelva, bumpear a `active`. |
@@ -92,6 +93,7 @@
 
 > Solo cambios que afectan operación. Detalles en git log.
 
+- **2026-07-01** Nodo nuevo `raspberrypi5` (backup, 20:15 AR) onboardeado vía Tailscale. Deploy key propia read-write (id 156106959, título "raspberrypi5-node"). `.env` copiado del primary. auto_fix (break-glass) desplegado en el WSL vía cron `0 13,20` (self-gated) — corre solo cuando la PC está prendida; agy no está en los Pi (aarch64). **Pendiente user**: `AUTO_FIX_ENABLED=1` en el `.env` del WSL para prenderlo (hoy queda no-op por gate).
 - **2026-07-01** `healthcheck.diagnose()` falso positivo: alertaba por CUALQUIER nodo con `status != ok`, aunque fuera viejo. Un backup con `supplier_down` viejo (o que ahora dup_skipea, dejando `status` viejo porque dup_skip no corre update_products) alertaba perpetuamente. Fix: usar `last_outcome` (signal fresco) + solo si la corrida es RECIENTE (≤26h). Cubre el falso positivo real que llegó por Telegram el 01/07.
 - **2026-07-01** CI `test_pipeline.yml`: ahora corre la **suite COMPLETA** (`pytest tests/`) con piso de coverage `--cov-fail-under=58`. Antes solo corría 2 archivos (`test_nightly_report` + `test_healthcheck`) → el resto de los tests nunca se ejercitaban en CI. `pytest-cov` sumado a requirements.
 - **2026-07-01** `scripts/auto_fix.py` (break-glass, P15): auto-fix multi-agente para outage de ≥3 días sin update. Cadena `agy`: diagnóstico → fix → verificación adversarial → gate pytest (wrapper) → push. Clon aislado (agente no pushea a prod), opt-in `AUTO_FIX_ENABLED` (default OFF), cooldown 24h. **NO activado aún** — requiere `AUTO_FIX_ENABLED=1` en `.env` de la Pi. Depende de P14 (tests robustos).
