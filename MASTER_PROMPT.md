@@ -446,9 +446,13 @@
 
 ### P13 — Detector de `supplier_down` sostenido (N corridas consecutivas)
 
-- **status**: pending
-- **prioridad**: MEDIA (cierra gap de observabilidad detectado 2026-07-01)
-- **estimado**: 1-2h
+- **status**: partial (detector hecho 2026-07-01; falta gating de AIOps)
+- **prioridad**: BAJA (el detector ya cierra el gap principal; la parte de ruido se volvió menor tras arreglar DESKTOP)
+- **estimado**: 1h (lo que queda)
+
+**HECHO (2026-07-01, healthcheck.py + tests)**: `healthcheck.diagnose()` ahora escala si las últimas `SUSTAINED_FAIL_RUNS` (3) corridas fallaron con `api ∈ {supplier_down, api_fail}`. Antes solo miraba `api_fail`, dejando pasar un outage sostenido de `supplier_down` hasta el stale-check de 26h. Un `supplier_down` aislado NO alerta (lo cubre el filler); un `ok` reciente corta el streak. Tests: `test_diagnose_alerta_si_supplier_down_sostenido`, `_no_alerta_supplier_down_aislado`, `_no_alerta_si_proveedor_se_recupero`.
+
+**FALTA (opcional)**: gatear `aiops_remediate` para que no se dispare en cada `supplier_down` aislado, sino recién cuando el detector marca outage sostenido. Se volvió menos urgente: el ruido nocturno venía de DESKTOP-MI43BOU (ya arreglado — corre 21:00 como backup → dup_skip). Hoy AIOps solo se dispara si un primary REAL (la Pi) no pudo fetchear, lo cual es señal legítima. AIOps se lanza desde DOS lugares (`run_daily.sh:222-223` y `nightly_report.py:_send_tech_alert`); cubrir ambos si se retoma.
 
 **Problema**: hoy NO existe un detector de "Bertual caído N corridas seguidas". Un `supplier_down` aislado es esperado y manejado (filler Lun-Sab). Pero un outage REAL sostenido del proveedor solo escalaría por edad de la data publicada (`healthcheck.detect_public_site_stale`, recién a 26h/50h). Entre medio, cada corrida dispara AIOps + Telegram técnico individualmente (ruido) sin distinguir "hipo transitorio" de "outage real".
 

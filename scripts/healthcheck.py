@@ -24,6 +24,11 @@ load_dotenv(ENV_FILE, override=True)
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 THRESHOLD_HOURS = 26  # tolera un dia + 2h de margen
+# Fallo sostenido del proveedor: cuantas corridas seguidas sin precios hacen
+# falta para escalar. Un supplier_down aislado es esperado (lo cubre el filler
+# Lun-Sab); recien alertamos cuando el proveedor esta caido de forma sostenida.
+SUSTAINED_FAIL_RUNS = 3
+SUSTAINED_FAIL_STATES = ("api_fail", "supplier_down")
 
 HOST = socket.gethostname()
 
@@ -187,9 +192,21 @@ def diagnose():
                     f"(ultimo proveedor: {hb.get('last_telegram_provider', '?')})."
                 )
 
-    last_runs = last_n_runs(3)
-    if last_runs and all(r.get("api") == "api_fail" for r in last_runs):
-        problems.append(f"Las ultimas {len(last_runs)} corridas fallaron contra la API Bertual.")
+    # Fallo SOSTENIDO del proveedor: N corridas seguidas sin obtener precios.
+    # Cubre supplier_down (timeout/500) Y api_fail (error de la API). Antes solo
+    # miraba api_fail, dejando pasar un outage sostenido de supplier_down hasta
+    # que detect_public_site_stale lo agarraba recien a las 26h+ (gap P13,
+    # 2026-07-01). Un supplier_down aislado NO alerta (lo cubre el filler
+    # Lun-Sab); recien escalamos con >= SUSTAINED_FAIL_RUNS corridas seguidas.
+    last_runs = last_n_runs(SUSTAINED_FAIL_RUNS)
+    if (len(last_runs) >= SUSTAINED_FAIL_RUNS
+            and all(r.get("api") in SUSTAINED_FAIL_STATES for r in last_runs)):
+        estados = ", ".join(r.get("api", "?") for r in last_runs)
+        problems.append(
+            f"Las ultimas {len(last_runs)} corridas fallaron contra la API Bertual "
+            f"(estados: {estados}). Proveedor caido sostenido — el filler cubre al "
+            f"cliente pero la data NO se esta actualizando."
+        )
 
     problems.extend(detect_version_drift(hb))
 

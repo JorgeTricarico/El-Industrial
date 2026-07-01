@@ -80,6 +80,55 @@ def test_diagnose_alerta_si_3_ultimas_corridas_fallaron(tmp_path, monkeypatch):
     assert any("fallaron contra la API Bertual" in p for p in problems)
 
 
+def test_diagnose_alerta_si_supplier_down_sostenido(tmp_path, monkeypatch):
+    """P13: 3 supplier_down seguidos = outage sostenido, debe alertar.
+
+    Antes solo se miraba api_fail, dejando pasar supplier_down sostenido hasta
+    el stale check de 26h. Gap cerrado 2026-07-01."""
+    iso = datetime.now().isoformat()
+    write_heartbeat(tmp_path, iso)
+    write_metrics(tmp_path, [
+        {"ts": iso, "api": "supplier_down", "node": "raspberrypi", "tenant": "el-industrial"},
+        {"ts": iso, "api": "supplier_down", "node": "raspberrypi", "tenant": "el-industrial"},
+        {"ts": iso, "api": "supplier_down", "node": "raspberrypi", "tenant": "el-industrial"},
+    ])
+    monkeypatch.setattr(healthcheck, "STATUS_DIR", str(tmp_path / "status"))
+    monkeypatch.setattr(healthcheck, "detect_public_site_stale", lambda: [])
+    status, problems = healthcheck.diagnose()
+    assert status == "alert"
+    assert any("Proveedor caido sostenido" in p for p in problems)
+
+
+def test_diagnose_no_alerta_supplier_down_aislado(tmp_path, monkeypatch):
+    """P13: un supplier_down aislado NO debe escalar (lo cubre el filler)."""
+    iso = datetime.now().isoformat()
+    write_heartbeat(tmp_path, iso)
+    write_metrics(tmp_path, [
+        {"ts": iso, "api": "supplier_down", "node": "raspberrypi", "tenant": "el-industrial"},
+    ])
+    monkeypatch.setattr(healthcheck, "STATUS_DIR", str(tmp_path / "status"))
+    monkeypatch.setattr(healthcheck, "detect_public_site_stale", lambda: [])
+    status, problems = healthcheck.diagnose()
+    assert status == "ok", f"un solo supplier_down no debe alertar: {problems}"
+
+
+def test_diagnose_no_alerta_si_proveedor_se_recupero(tmp_path, monkeypatch):
+    """P13: si la corrida mas reciente fue 'ok', el streak se corta (no alertar)."""
+    iso = datetime.now().isoformat()
+    write_heartbeat(tmp_path, iso)
+    # Orden de archivo: mas viejo -> mas nuevo. last_n_runs lee en reversa,
+    # asi que la ultima ('ok') rompe el streak.
+    write_metrics(tmp_path, [
+        {"ts": iso, "api": "supplier_down", "node": "raspberrypi", "tenant": "el-industrial"},
+        {"ts": iso, "api": "supplier_down", "node": "raspberrypi", "tenant": "el-industrial"},
+        {"ts": iso, "api": "ok", "node": "raspberrypi", "tenant": "el-industrial"},
+    ])
+    monkeypatch.setattr(healthcheck, "STATUS_DIR", str(tmp_path / "status"))
+    monkeypatch.setattr(healthcheck, "detect_public_site_stale", lambda: [])
+    status, problems = healthcheck.diagnose()
+    assert status == "ok", f"proveedor recuperado no debe alertar: {problems}"
+
+
 def test_diagnose_ignora_eventos_sin_campo_api(tmp_path, monkeypatch):
     """metrics.jsonl puede tener eventos de nightly_report (sin campo 'api'); deben ignorarse."""
     iso = datetime.now().isoformat()

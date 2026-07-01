@@ -20,7 +20,7 @@
 - **Fecha:** 2026-07-01
 - **Agente:** Claude Opus 4.8 (sesión de Jorge)
 - **Commit head al cierre:** ver git log
-- **Tests:** 199 ✅
+- **Tests:** 202 ✅
 - **Producción:** verde — Pi corrió 01/07 10:00 AR (`outcome=updated`). Data del 01/07 en repo.
 
 ---
@@ -92,6 +92,8 @@
 
 > Solo cambios que afectan operación. Detalles en git log.
 
+- **2026-07-01** `healthcheck.diagnose()` (P13 parcial): escala si las últimas 3 corridas fallaron con `supplier_down` o `api_fail`. Antes solo miraba `api_fail` → un outage sostenido de `supplier_down` era invisible hasta el stale-check de 26h. Un `supplier_down` aislado sigue sin alertar (lo cubre el filler).
+- **2026-07-01** Crontab de DESKTOP-MI43BOU: `0 0` → `0 21 * * 1-6` (drift de TZ: se computó para UTC y el reloj de WSL pasó a AR). Ahora corre después del run de las 20:00 de la Pi → `dup_skip`, sin ruido nocturno.
 - **2026-07-01** `run_daily.sh` + `node_pulse.effective_role`: el rol operativo ahora se resuelve desde `infra/nodes.yml` (via `--resolve-role`), con override env y fallback legacy. Antes cualquier host que no dijera "mint" se auto-elegía `primary` — DESKTOP-MI43BOU (backup) se creía primary y pegaba a Bertual de madrugada. `supplier_down` (exit 3) ahora loguea `AVISO` en vez de `CRITICO` (era ruido sobre condición esperada/manejada).
 - **2026-07-01** `run_daily.sh:53` bug latente: el `git pull ... | tee` enmascaraba el exit de git (el `if` veía el exit de `tee`=0). Un pull fallido seguía con código stale en vez de abortar (exit 2) — la protección anti-data-vieja del bug 19-may estaba rota. Fix: redirigir al log sin pipe. Test `test_pull_fail_aborts_with_exit_2` vuelve a verde.
 - **2026-05-23** `healthcheck.detect_public_site_stale`: skip tenants testing + edad medida desde `file_date+20h` en vez de medianoche. Elimina falso positivo diario donde el runner de GH Actions (2-3h tarde) reportaba "deploy no llegando" aunque el deploy era reciente.
