@@ -1,1 +1,1 @@
-data/lista_precio_26-07-01_json_compres.gz
+data/lista_precio_26-07-02_json_compres.gz
