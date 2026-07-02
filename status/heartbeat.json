@@ -1,12 +1,12 @@
 {
   "nodes": {
     "DESKTOP-MI43BOU": {
-      "last_run": "2026-06-30T00:01:50.123115",
-      "last_outcome": "supplier_down",
-      "version": "3664da0",
+      "last_run": "2026-07-01T21:00:03.826826",
+      "last_outcome": "dup_skip",
+      "version": "5335fcd",
       "role_declared": "backup",
-      "note": "proveedor caido (timeout/500)",
-      "last_pulled_iso": "2026-06-30T00:00:03.377406",
+      "note": "commit-marker [run:26-07-01] con update real ya presente",
+      "last_pulled_iso": "2026-07-01T21:00:03.020725",
       "status": "supplier_down",
       "duration_s": 106.44,
       "error": "el-industrial:supplier_down"
