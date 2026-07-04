@@ -12,14 +12,14 @@
       "error": "el-industrial:supplier_down"
     },
     "raspberrypi": {
-      "last_run": "2026-07-03T22:00:10.884671",
-      "last_outcome": "dup_skip",
-      "version": "8f8b720",
+      "last_run": "2026-07-04T10:01:02.004141",
+      "last_outcome": "updated",
+      "version": "5b3828a",
       "role_declared": "primary",
-      "note": "commit-marker [run:26-07-03] con update real ya presente",
+      "note": "update_products+nightly OK",
       "status": "ok",
-      "duration_s": 12.19,
-      "last_pulled_iso": "2026-07-03T22:00:10.136830"
+      "duration_s": 13.51,
+      "last_pulled_iso": "2026-07-04T10:00:10.669749"
     },
     "raspberrypi5": {
       "last_run": "2026-07-03T20:15:10.515044",
@@ -30,7 +30,7 @@
       "last_pulled_iso": "2026-07-03T20:15:10.280744"
     }
   },
-  "last_telegram_iso": "2026-07-03T10:01:05.272255",
+  "last_telegram_iso": "2026-07-04T10:01:00.091593",
   "last_telegram_provider": "gemini",
   "tenants": {
     "demo-electricidad": {
@@ -38,7 +38,7 @@
       "last_telegram_provider": "gemini"
     },
     "el-industrial": {
-      "last_telegram_iso": "2026-07-03T10:01:05.272255",
+      "last_telegram_iso": "2026-07-04T10:01:00.091593",
       "last_telegram_provider": "gemini"
     }
   }
