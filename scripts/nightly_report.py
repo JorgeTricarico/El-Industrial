@@ -778,13 +778,6 @@ def process_tenant_report(tenant):
     provider = None
 
     if no_accum_filler or (len(updated_items) == 0 and len(new_items) == 0):
-        if no_accum_filler and not force:
-            last_api = _get_tenant_last_api_status(slug)
-            if last_api == "supplier_down":
-                _send_tech_alert(f"⚠️ Alerta Técnica ({slug}): Proveedor caído (Timeout/500 en Bertual/Haedo). El sistema intentará reintentar en las próximas horas.")
-            else:
-                _send_tech_alert(f"⚠️ Alerta Técnica ({slug}): Sin daily_accum.json. El mayorista no respondió o el cron falló.")
-
         try:
             import sys as _sys
             _sys.path.insert(0, SCRIPT_DIR)
@@ -792,6 +785,19 @@ def process_tenant_report(tenant):
             days = heartbeat_io.days_since_last_telegram(STATUS_DIR, slug)
         except Exception:
             days = None
+
+        if no_accum_filler and not force:
+            last_api = _get_tenant_last_api_status(slug)
+            if last_api == "supplier_down":
+                if days is not None and days >= 2:
+                    _send_tech_alert(f"⚠️ Alerta Técnica ({slug}): Proveedor caído (Timeout/500 en Bertual/Haedo). El sistema intentará reintentar en las próximas horas.")
+                else:
+                    log_metric("tech_alert_suppressed", f"{slug}: supplier_down alert suppressed (days={days})")
+            else:
+                if days is not None and days >= 2:
+                    _send_tech_alert(f"⚠️ Alerta Técnica ({slug}): Sin daily_accum.json. El mayorista no respondió o el cron falló.")
+                else:
+                    log_metric("tech_alert_suppressed", f"{slug}: no_accum alert suppressed (days={days})")
             
         if force:
             body = _filler_body("no_changes")
@@ -827,6 +833,14 @@ def process_tenant_report(tenant):
             body = render_template_fallback(updated_items, top_brands, top_hikes, fecha, magnitude=magnitude)
         else:
             body = sanitize_html(body)
+
+    if body:
+        error_kws = ["error", "fail", "falla"]
+        if any(kw in body.lower() for kw in error_kws):
+            _send_tech_alert(f"⚠️ Alerta Técnica ({slug}): El reporte contenía errores y fue abortado. Mensaje original: {body}")
+            log_metric("nightly_error_aborted", f"{slug}: reporte abortado por palabra prohibida")
+            result["status"] = "error"
+            return result
 
     # Branding del tenant (siteName) para personalizar el header
     site_name = ""

@@ -36,6 +36,7 @@ tenants:
 
     monkeypatch.setattr(pdc, "TENANTS_DIR", str(tenants))
     monkeypatch.setattr(pdc, "REGISTRY", str(tenants / "_registry.yml"))
+    monkeypatch.setattr(pdc, "load_tenants", lambda: [{"slug": "cliente-x", "state": "active", "netlify_url": "https://fake-cliente-x.netlify.app"}])
     return {"dir": t, "filename": fname, "raw_bytes": raw, "payload": payload}
 
 
@@ -213,6 +214,13 @@ tenants:
 """)
     monkeypatch.setattr(pdc, "TENANTS_DIR", str(tenants))
     monkeypatch.setattr(pdc, "REGISTRY", str(tenants / "_registry.yml"))
+    monkeypatch.setattr(pdc, "load_tenants", lambda: [{"slug": "pausado", "state": "inactive", "netlify_url": "https://x.netlify.app"}])
     code = pdc.main()
     assert code == 0
     assert not mock_get.called
+
+def test_smoke_import_post_deploy_check():
+    """Basic smoke test checking that the module is importable and has key functions."""
+    import post_deploy_check as pdc
+    assert hasattr(pdc, "main")
+    assert hasattr(pdc, "check_tenant")

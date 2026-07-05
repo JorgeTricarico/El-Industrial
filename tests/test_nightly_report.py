@@ -240,14 +240,21 @@ def _setup_tenant_with_accum(tmp_path, slug="alpha", accum=None):
     return tenants_dir, tenant_root
 
 
+@patch('nightly_report.load_registry', return_value=[{"slug": "alpha", "state": "active"}])
 @patch('nightly_report.GEMINI_API_KEY', 'fake')
 @patch('nightly_report.CEREBRAS_API_KEY', 'fake')
 @patch('nightly_report.SAMBANOVA_API_KEY', 'fake')
+@patch('nightly_report._send_tech_alert')
 @patch('nightly_report.send_telegram')
 @patch('nightly_report.requests.post')
-def test_main_envia_telegram_aunque_llm_falle(mock_post, mock_send, tmp_path, monkeypatch):
-    """Smoke test: con los 3 LLMs caidos, main() igual llama a send_telegram con plantilla."""
-    tenants_dir, _ = _setup_tenant_with_accum(tmp_path)
+def test_main_envia_telegram_aunque_llm_falle(mock_post, mock_send, mock_alert, mock_registry, tmp_path, monkeypatch):
+    """Smoke test: con los 3 LLMs caidos, main() aborta por anti-panic filter."""
+    # Agregamos 'error' al nombre del item para que el template dispare el anti-panic filter
+    accum = {
+        "updated": {"X1": {"code": "X1", "name": "Cable test error",
+                           "old": "100.0", "new": "110.0", "marca": "TEST"}}
+    }
+    tenants_dir, _ = _setup_tenant_with_accum(tmp_path, accum=accum)
     monkeypatch.setattr(nightly_report, "STATUS_DIR", str(tmp_path / "status"))
     monkeypatch.setattr(nightly_report, "TENANTS_DIR", str(tenants_dir))
     monkeypatch.setattr(nightly_report, "REGISTRY", str(tenants_dir / "_registry.yml"))
@@ -261,11 +268,8 @@ def test_main_envia_telegram_aunque_llm_falle(mock_post, mock_send, tmp_path, mo
 
     nightly_report.main()
 
-    assert mock_send.called, "send_telegram debe llamarse aunque los LLMs fallen"
-    sent_msg = mock_send.call_args[0][0]
-    assert "Lista del dia" in sent_msg
-    assert any(s in sent_msg for s in ["TEST", "Cable test", "1 productos"]), \
-        f"mensaje plantilla sin datos del item: {sent_msg!r}"
+    assert not mock_send.called, "send_telegram NO debe llamarse si los LLMs fallan (anti-panic filter)"
+    assert mock_alert.called, "debe enviar alerta técnica"
 
 
 # ============ PROCESS TENANT REPORT (Fase 2B) ============
@@ -279,10 +283,12 @@ def test_process_tenant_report_skips_inactive(mock_ai, mock_send, tmp_path, monk
     assert not mock_send.called
 
 
+@patch('nightly_report._is_guaranteed_day', return_value=True)
+@patch('heartbeat_io.days_since_last_telegram', return_value=1)
 @patch('nightly_report._send_tech_alert')
 @patch('nightly_report.send_telegram')
 @patch('nightly_report.get_ai_analysis')
-def test_process_tenant_report_no_accum_skips(mock_ai, mock_send, mock_alert, tmp_path, monkeypatch):
+def test_process_tenant_report_no_accum_skips(mock_ai, mock_send, mock_alert, mock_days, mock_guaranteed, tmp_path, monkeypatch):
     """Sin accum -> tech alert (si corresponde) y quiet skip."""
     import heartbeat_io
     yesterday = (datetime.now() - timedelta(days=1)).isoformat()
@@ -294,9 +300,11 @@ def test_process_tenant_report_no_accum_skips(mock_ai, mock_send, mock_alert, tm
     assert not mock_send.called
 
 
+@patch('nightly_report._is_guaranteed_day', return_value=True)
+@patch('heartbeat_io.days_since_last_telegram', return_value=3)
 @patch('nightly_report._send_tech_alert')
 @patch('nightly_report.send_telegram', return_value=True)
-def test_process_tenant_report_no_accum_on_workday_sends_tech_alert_and_skips(mock_send, mock_alert, tmp_path, monkeypatch):
+def test_process_tenant_report_no_accum_on_workday_sends_tech_alert_and_skips(mock_send, mock_alert, mock_days, mock_guaranteed, tmp_path, monkeypatch):
     """Sin accum -> tech alert al dev + quiet_skip para el cliente."""
     import heartbeat_io
     yesterday = (datetime.now() - timedelta(days=1)).isoformat()
@@ -352,9 +360,12 @@ def test_process_tenant_archives_accum(mock_ai, mock_send, tmp_path, monkeypatch
     assert len(archived) == 1
 
 
+@patch('nightly_report._is_guaranteed_day', return_value=True)
+@patch('nightly_report.load_registry', return_value=[{"slug": "alpha", "state": "active"}, {"slug": "beta", "state": "testing"}, {"slug": "gamma", "state": "inactive"}])
+@patch('heartbeat_io.days_since_last_telegram', return_value=8)
 @patch('nightly_report.send_telegram', return_value=True)
 @patch('nightly_report.get_ai_analysis', return_value=("AI text", "gemini"))
-def test_main_itera_solo_active(mock_ai, mock_send, tmp_path, monkeypatch):
+def test_main_itera_solo_active(mock_ai, mock_send, mock_days, mock_registry, mock_guaranteed, tmp_path, monkeypatch):
     """main() debe procesar solo tenants con state=active."""
     tenants_dir = tmp_path / "tenants"
     for slug, state in [("alpha", "active"), ("beta", "testing"), ("gamma", "inactive")]:
@@ -598,3 +609,61 @@ def test_archive_accum_recovers_from_rename_fail(tmp_path, monkeypatch):
     assert not accum.exists()
     arch = list((status_dir / "archive").iterdir())
     assert len(arch) == 1
+
+@patch('nightly_report._send_tech_alert')
+@patch('nightly_report.send_telegram', return_value=True)
+def test_process_tenant_report_abort_on_error_keywords(mock_send, mock_alert, tmp_path, monkeypatch):
+    """Si el LLM devuelve una palabra prohibida (ej. error), debe abortar el reporte."""
+    import json
+    tenants_dir = tmp_path / "tenants"
+    tenant_dir = tenants_dir / "demo"
+    status_dir = tenant_dir / "status"
+    status_dir.mkdir(parents=True)
+    accum = status_dir / "daily_accum.json"
+    accum.write_text(json.dumps({"updated": {"1": {"new": 100, "old": 50}}, "new": {}}))
+    
+    monkeypatch.setattr(nightly_report, "TENANTS_DIR", str(tenants_dir))
+    monkeypatch.setattr(nightly_report, "STATUS_DIR", str(tmp_path / "status"))
+    monkeypatch.setattr(nightly_report, "get_ai_analysis", lambda prompt: ("Este mensaje contiene un error inesperado.", "gemini"))
+    
+    res = nightly_report.process_tenant_report({"slug": "demo", "state": "active"})
+    assert res["status"] == "error"
+    assert mock_alert.called
+    assert "reporte contenía errores y fue abortado" in mock_alert.call_args[0][0]
+
+
+@patch('nightly_report._is_guaranteed_day', return_value=True)
+@patch('nightly_report._send_tech_alert')
+@patch('nightly_report.send_telegram', return_value=True)
+def test_process_tenant_report_suppresses_tech_alert_if_days_lt_2(mock_send, mock_alert, mock_guaranteed, tmp_path, monkeypatch):
+    """Si no hay accum y han pasado menos de 2 días desde el último envío, no debe enviar tech alert."""
+    import heartbeat_io
+    yesterday = (datetime.now() - timedelta(days=1)).isoformat()
+    # Escribir heartbeat para simular que pasaron < 2 días (pasó 1 día)
+    status_root = tmp_path / "status"
+    status_root.mkdir(exist_ok=True)
+    heartbeat_io.update_telegram(str(status_root), "gemini", yesterday, slug="alpha")
+    
+    # Escribir métrica para que _get_tenant_last_api_status devuelva "supplier_down"
+    metrics = status_root / "metrics.jsonl"
+    metrics.write_text(json.dumps({"tenant": "alpha", "api": "supplier_down"}) + "\n")
+    
+    tenants_dir = tmp_path / "tenants"
+    (tenants_dir / "alpha").mkdir(parents=True)
+    monkeypatch.setattr(nightly_report, "TENANTS_DIR", str(tenants_dir))
+    monkeypatch.setattr(nightly_report, "STATUS_DIR", str(status_root))
+    
+    # Mock log_metric para verificar su llamada
+    mock_log = MagicMock()
+    monkeypatch.setattr(nightly_report, "log_metric", mock_log)
+    
+    res = nightly_report.process_tenant_report({"slug": "alpha", "state": "active"})
+    
+    # Debe ser quiet_skip
+    assert res["status"] == "quiet_skip"
+    # NO debe enviar alerta técnica
+    assert not mock_alert.called
+    # Debe haber logueado la supresión
+    log_calls = [args[0] for args, kwargs in mock_log.call_args_list]
+    assert "tech_alert_suppressed" in log_calls
+

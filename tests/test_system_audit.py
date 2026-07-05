@@ -13,6 +13,19 @@ from datetime import datetime, timedelta
 import importlib
 
 import pytest
+import sys
+
+class DummyYaml:
+    @staticmethod
+    def safe_load(f):
+        content = f.read()
+        if "ghost-node" in content:
+            return {"nodes": [{"hostname": "ghost-node", "role": "primary", "state": "active"}]}
+        elif "paused-node" in content:
+            return {"nodes": [{"hostname": "paused-node", "state": "paused"}]}
+        else:
+            return {"nodes": []}
+sys.modules['yaml'] = DummyYaml
 
 import system_audit
 
@@ -370,3 +383,9 @@ def test_check_env_keys_combina_archivo_y_env(monkeypatch, tmp_path):
     monkeypatch.setenv("BERTUAL_CLIENT_ID", "ci")
     tenants = [{"slug": "alpha", "state": "active", "supplier": "Bertual"}]
     assert system_audit.check_env_keys(tenants) == []
+
+def test_smoke_import_system_audit():
+    """Basic smoke test checking that the module is importable and has key functions."""
+    import system_audit
+    assert hasattr(system_audit, "main")
+    assert hasattr(system_audit, "check_tenants_deploys")
