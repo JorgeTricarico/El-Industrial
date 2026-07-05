@@ -51,6 +51,13 @@ jobs:
           # weekday: 1=Lun..7=Dom. Lun-Sab => 1..6
           WEEKDAY=$(date +%u)
 
+          if [ $(date +%H) -lt 03 ]; then
+            FILE_DATE=$(date -d "yesterday" +%y-%m-%d)
+            TODAY_TAG="[run:$FILE_DATE]"
+            TODAY_AR=$(date -d "yesterday" +%Y-%m-%d)
+            WEEKDAY=$(date -d "yesterday" +%u)
+          fi
+
           # Determinar tenants pendientes de Telegram para HOY
           # Iteramos hb.tenants.<slug>.last_telegram_iso. Si no es de hoy: pendiente.
           PENDING=()

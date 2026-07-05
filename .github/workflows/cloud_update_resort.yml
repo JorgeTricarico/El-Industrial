@@ -64,6 +64,11 @@ jobs:
           set -e
           FILE_DATE=$(date +%y-%m-%d)
           TODAY_TAG="[run:$FILE_DATE]"
+
+          if [ $(date +%H) -lt 03 ]; then
+            FILE_DATE=$(date -d "yesterday" +%y-%m-%d)
+            TODAY_TAG="[run:$FILE_DATE]"
+          fi
           REAL=$(git log origin/main --format=%s -30 | \
             grep -F "$TODAY_TAG" | grep -c "^Actualizacion automatica" || true)
           echo "real_update_today=$REAL" >> "$GITHUB_OUTPUT"
@@ -120,6 +125,11 @@ jobs:
           git fetch origin main
           FILE_DATE=$(date +%y-%m-%d)
           TODAY_TAG="[run:$FILE_DATE]"
+
+          if [ $(date +%H) -lt 03 ]; then
+            FILE_DATE=$(date -d "yesterday" +%y-%m-%d)
+            TODAY_TAG="[run:$FILE_DATE]"
+          fi
           REAL=$(git log origin/main --format=%s -30 | \
             grep -F "$TODAY_TAG" | grep -c "^Actualizacion automatica" || true)
           if [ "${REAL:-0}" -gt 0 ]; then
@@ -165,6 +175,11 @@ jobs:
           set -e
           FILE_DATE=$(date +%y-%m-%d)
           TODAY_TAG="[run:$FILE_DATE]"
+
+          if [ $(date +%H) -lt 03 ]; then
+            FILE_DATE=$(date -d "yesterday" +%y-%m-%d)
+            TODAY_TAG="[run:$FILE_DATE]"
+          fi
           git config user.name "GitHub Action Cloud-Resort"
           git config user.email "actions@github.com"
           # Whitelist: solo los archivos que update_products + sync_tenants tocan.

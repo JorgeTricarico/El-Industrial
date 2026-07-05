@@ -25,6 +25,13 @@ jobs:
           TODAY_AR=$(date +%Y-%m-%d)
           TODAY_TAG="[run:$TODAY]"
           WEEKDAY=$(date +%u)  # 1=Lun..7=Dom
+
+          if [ $(date +%H) -lt 03 ]; then
+            TODAY=$(date -d "yesterday" +%y-%m-%d)
+            TODAY_AR=$(date -d "yesterday" +%Y-%m-%d)
+            TODAY_TAG="[run:$TODAY]"
+            WEEKDAY=$(date -d "yesterday" +%u)
+          fi
           echo "today_tag=$TODAY_TAG" >> $GITHUB_OUTPUT
 
           # Skip si Domingo y no estamos en garantia (defecto Lun-Sab).
