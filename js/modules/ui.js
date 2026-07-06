@@ -11,6 +11,7 @@ export const elements = {
     themeToggle: document.getElementById("themeToggle"),
     dollarPrice: document.getElementById("dollarPrice"),
     dollarDate: document.getElementById("dollarDatee"),
+    dollarInfo: document.getElementById("dollarInfo"),
     currencyToggle: document.getElementById("currencyToggle"),
     fechaLista: document.getElementById("fechaLista"),
     brandName: document.getElementById("brandName")
@@ -108,6 +109,7 @@ export const updateDollarUI = (data) => {
         const fecha = new Date(data.fechaActualizacion);
         elements.dollarDate.textContent = `(${fecha.toLocaleDateString('es-AR')})`;
     }
+    if (elements.dollarInfo) elements.dollarInfo.hidden = false;
     if (elements.currencyToggle) elements.currencyToggle.style.display = "flex";
 };
 
