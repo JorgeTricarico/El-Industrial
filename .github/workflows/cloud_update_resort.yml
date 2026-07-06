@@ -65,7 +65,7 @@ jobs:
           FILE_DATE=$(date +%y-%m-%d)
           TODAY_TAG="[run:$FILE_DATE]"
 
-          if [ $(date +%H) -lt 03 ]; then
+          if [ $(date +%H) -lt 08 ]; then
             FILE_DATE=$(date -d "yesterday" +%y-%m-%d)
             TODAY_TAG="[run:$FILE_DATE]"
           fi
@@ -126,7 +126,7 @@ jobs:
           FILE_DATE=$(date +%y-%m-%d)
           TODAY_TAG="[run:$FILE_DATE]"
 
-          if [ $(date +%H) -lt 03 ]; then
+          if [ $(date +%H) -lt 08 ]; then
             FILE_DATE=$(date -d "yesterday" +%y-%m-%d)
             TODAY_TAG="[run:$FILE_DATE]"
           fi
@@ -176,7 +176,7 @@ jobs:
           FILE_DATE=$(date +%y-%m-%d)
           TODAY_TAG="[run:$FILE_DATE]"
 
-          if [ $(date +%H) -lt 03 ]; then
+          if [ $(date +%H) -lt 08 ]; then
             FILE_DATE=$(date -d "yesterday" +%y-%m-%d)
             TODAY_TAG="[run:$FILE_DATE]"
           fi

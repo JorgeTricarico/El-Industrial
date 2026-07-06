@@ -26,7 +26,7 @@ jobs:
           TODAY_TAG="[run:$TODAY]"
           WEEKDAY=$(date +%u)  # 1=Lun..7=Dom
 
-          if [ $(date +%H) -lt 03 ]; then
+          if [ $(date +%H) -lt 08 ]; then
             TODAY=$(date -d "yesterday" +%y-%m-%d)
             TODAY_AR=$(date -d "yesterday" +%Y-%m-%d)
             TODAY_TAG="[run:$TODAY]"
