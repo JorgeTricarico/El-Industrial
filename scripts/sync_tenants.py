@@ -190,15 +190,20 @@ def deploy_to_netlify(tenant_dir, site_id, token):
 
     # 2. POST manifest. Netlify responde con la lista 'required' de hashes
     # que falta subir (los demas los toma del deploy anterior).
-    try:
-        res = requests.post(
-            f"https://api.netlify.com/api/v1/sites/{site_id}/deploys",
-            json={"files": files_map, "async": False},
-            headers={**auth, "Content-Type": "application/json"},
-            timeout=60,
-        )
-    except requests.RequestException as e:
-        return (False, f"manifest {type(e).__name__}: {e}")
+    import time
+    for attempt in range(4):
+        try:
+            res = requests.post(
+                f"https://api.netlify.com/api/v1/sites/{site_id}/deploys",
+                json={"files": files_map, "async": False},
+                headers={**auth, "Content-Type": "application/json"},
+                timeout=60,
+            )
+            break
+        except requests.RequestException as e:
+            if attempt == 3:
+                return (False, f"manifest {type(e).__name__}: {e}")
+            time.sleep(15)
     if not res.ok:
         return (False, f"manifest HTTP {res.status_code}: {res.text[:200]}")
     body = res.json()
@@ -211,15 +216,20 @@ def deploy_to_netlify(tenant_dir, site_id, token):
         if not path:
             continue
         with open(path, "rb") as fh:
-            try:
-                r = requests.put(
-                    f"https://api.netlify.com/api/v1/deploys/{deploy_id}/files{[k for k,v in files_map.items() if v==sha][0]}",
-                    data=fh.read(),
-                    headers={**auth, "Content-Type": "application/octet-stream"},
-                    timeout=120,
-                )
-            except requests.RequestException as e:
-                return (False, f"upload {type(e).__name__}: {e}")
+            for attempt in range(4):
+                fh.seek(0)
+                try:
+                    r = requests.put(
+                        f"https://api.netlify.com/api/v1/deploys/{deploy_id}/files{[k for k,v in files_map.items() if v==sha][0]}",
+                        data=fh.read(),
+                        headers={**auth, "Content-Type": "application/octet-stream"},
+                        timeout=120,
+                    )
+                    break
+                except requests.RequestException as e:
+                    if attempt == 3:
+                        return (False, f"upload {type(e).__name__}: {e}")
+                    time.sleep(15)
         if not r.ok:
             return (False, f"upload HTTP {r.status_code} en {sha[:8]}: {r.text[:120]}")
 

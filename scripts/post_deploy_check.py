@@ -72,11 +72,15 @@ def read_local_gz(tenant_dir):
 
 def fetch_public(url, path, timeout=15):
     """GET url/path. Retorna (ok, status, content_bytes_or_text)."""
-    try:
-        res = requests.get(url.rstrip("/") + "/" + path.lstrip("/"), timeout=timeout)
-    except Exception as e:
-        return (False, 0, f"network_error: {type(e).__name__}: {e}")
-    return (res.ok, res.status_code, res.content if res.ok else res.text[:200])
+    import time
+    for attempt in range(4):
+        try:
+            res = requests.get(url.rstrip("/") + "/" + path.lstrip("/"), timeout=timeout)
+            return (res.ok, res.status_code, res.content if res.ok else res.text[:200])
+        except Exception as e:
+            if attempt == 3:
+                return (False, 0, f"network_error: {type(e).__name__}: {e}")
+            time.sleep(15)
 
 
 def normalize(items):

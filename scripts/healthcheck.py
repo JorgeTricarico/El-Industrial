@@ -203,7 +203,7 @@ def diagnose():
         tg_iso = hb.get("last_telegram_iso")
         if tg_iso:
             tg_age = hours_since(tg_iso)
-            if tg_age is not None and tg_age > THRESHOLD_HOURS:
+            if tg_age is not None and tg_age > _expected_stale_hours():
                 problems.append(
                     f"Telegram no se envio hace {tg_age:.1f}h "
                     f"(ultimo proveedor: {hb.get('last_telegram_provider', '?')})."
