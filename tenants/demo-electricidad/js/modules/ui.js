@@ -2,7 +2,7 @@
  * UI Module - DOM operations and rendering
  */
 
-import { formatProductPrice } from './currency.js';
+import { formatProductPrice } from './currency.js?v=1.5';
 
 export const elements = {
     productTableBody: document.querySelector("#productTable tbody"),
