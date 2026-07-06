@@ -195,7 +195,7 @@ def deploy_to_netlify(tenant_dir, site_id, token):
         try:
             res = requests.post(
                 f"https://api.netlify.com/api/v1/sites/{site_id}/deploys",
-                json={"files": files_map, "async": False},
+                json={"files": files_map, "async": False, "draft": False},
                 headers={**auth, "Content-Type": "application/json"},
                 timeout=60,
             )
