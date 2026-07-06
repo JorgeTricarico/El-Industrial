@@ -107,7 +107,10 @@ export const updateDollarUI = (data) => {
     if (elements.dollarPrice) elements.dollarPrice.textContent = `$${data.venta}`;
     if (elements.dollarDate) {
         const fecha = new Date(data.fechaActualizacion);
-        elements.dollarDate.textContent = `(${fecha.toLocaleDateString('es-AR')})`;
+        const d = String(fecha.getDate()).padStart(2, '0');
+        const m = String(fecha.getMonth() + 1).padStart(2, '0');
+        const y = String(fecha.getFullYear()).slice(-2);
+        elements.dollarDate.textContent = `(${d}/${m}/${y})`;
     }
     if (elements.dollarInfo) elements.dollarInfo.hidden = false;
     if (elements.currencyToggle) elements.currencyToggle.style.display = "flex";
