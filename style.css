@@ -44,9 +44,10 @@ body.dark-mode .logo img { filter: invert(1) brightness(2); }
 /* Si dollarInfo se oculta (API caida), los controles siguen agrupados a la derecha. */
 .controls > *[hidden] { display: none !important; }
 
-.dollar-tag { display: flex; flex-direction: column; line-height: 1.2; text-align: left; }
-.dollar-label { font-size: 0.6rem; font-weight: 700; color: var(--text-muted); text-transform: uppercase; }
-#dollarPrice { font-size: 0.9rem; font-weight: 800; color: var(--text); }
+.dollar-tag { display: flex; flex-direction: column; line-height: 1.2; text-align: center; align-items: center; }
+.dollar-label { font-size: 0.65rem; font-weight: 700; color: var(--text-muted); text-transform: uppercase; }
+#dollarPrice { font-size: 1.1rem; font-weight: 800; color: var(--text); }
+.dollar-date { font-size: 0.65rem; font-weight: 500; color: var(--text-muted); }
 
 .btn-icon { 
   background: var(--bg-subtle); border: 1px solid var(--border); border-radius: 12px; 
@@ -132,7 +133,6 @@ tr:has(.price-converted) {
 /* --- DESKTOP TABLE --- */
 @media (min-width: 850px) {
   :root { --header-height: 100px; }
-  .dollar-tag { text-align: right; }
   #productTable { display: table; border-spacing: 0; border-collapse: collapse; gap: 0; }
   #productTable tbody { display: table-row-group; }
   #productTable thead { display: table-header-group !important; position: static; visibility: visible; }
@@ -142,6 +142,8 @@ tr:has(.price-converted) {
   tr:has(.price-converted) { background: rgba(5, 150, 105, 0.02) !important; }
   td { display: table-cell; padding: 1.25rem 1rem; border-bottom: 1px solid var(--border); vertical-align: middle; }
   td.col-um, td.col-precio { border-top: none; padding-top: 1.25rem; font-size: 1.1rem; }
+  td.col-marca { text-align: center; }
+  .brand-badge { display: inline-flex; margin: 0 auto; }
   .brand-label, .code-label { display: none; }
 }
 
