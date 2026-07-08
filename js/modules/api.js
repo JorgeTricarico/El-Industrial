@@ -20,7 +20,7 @@ export const fetchLatestJsonFileName = async () => {
 };
 
 export const fetchDollarPrice = async () => {
-    const response = await fetch("https://dolarapi.com/v1/ambito/dolares/oficial");
+    const response = await fetch("https://dolarapi.com/v1/dolares/oficial");
     if (!response.ok) throw new Error("Dollar API failed");
     return await response.json();
 };

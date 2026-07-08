@@ -112,7 +112,7 @@ export const updateDollarUI = (data) => {
         const y = String(fecha.getFullYear()).slice(-2);
         elements.dollarDate.textContent = `(${d}/${m}/${y})`;
     }
-    if (elements.dollarInfo) elements.dollarInfo.hidden = false;
+    if (elements.dollarInfo) elements.dollarInfo.removeAttribute('hidden');
     if (elements.currencyToggle) elements.currencyToggle.style.display = "flex";
 };
 

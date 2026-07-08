@@ -1,6 +1,6 @@
-import * as api from './modules/api.js?v=1.5';
-import * as ui from './modules/ui.js?v=1.5';
-import { State } from './modules/state.js?v=1.5';
+import * as api from './modules/api.js?v=1.6';
+import * as ui from './modules/ui.js?v=1.6';
+import { State } from './modules/state.js?v=1.6';
 import { filterProducts } from './modules/filters.js';
 
 const state = {
