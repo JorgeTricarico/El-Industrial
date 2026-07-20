@@ -22,12 +22,12 @@
       "last_pulled_iso": "2026-07-20T20:00:09.465543"
     },
     "raspberrypi5": {
-      "last_run": "2026-07-18T20:15:05.197743",
+      "last_run": "2026-07-20T20:15:07.128320",
       "last_outcome": "dup_skip",
-      "version": "8622fab",
+      "version": "22c66bd",
       "role_declared": "backup",
-      "note": "commit-marker [run:26-07-18] con update real ya presente",
-      "last_pulled_iso": "2026-07-18T20:15:04.943119"
+      "note": "commit-marker [run:26-07-20] con update real ya presente",
+      "last_pulled_iso": "2026-07-20T20:15:06.888858"
     }
   },
   "last_telegram_iso": "2026-07-18T10:01:07.362443",
