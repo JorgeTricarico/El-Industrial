@@ -23,12 +23,12 @@
       "error": "el-industrial:supplier_down"
     },
     "raspberrypi5": {
-      "last_run": "2026-08-07T20:15:08.704871",
+      "last_run": "2026-08-08T20:15:10.626367",
       "last_outcome": "dup_skip",
-      "version": "400cd21",
+      "version": "b333e2b",
       "role_declared": "backup",
-      "note": "commit-marker [run:26-08-07] con update real ya presente",
-      "last_pulled_iso": "2026-08-07T20:15:08.381405"
+      "note": "commit-marker [run:26-08-08] con update real ya presente",
+      "last_pulled_iso": "2026-08-08T20:15:10.392969"
     }
   },
   "last_telegram_iso": "2026-08-08T10:00:46.670606",
