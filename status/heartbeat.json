@@ -12,14 +12,14 @@
       "error": "el-industrial:supplier_down"
     },
     "raspberrypi": {
-      "last_run": "2026-08-09T20:00:54.559313",
-      "last_outcome": "updated",
-      "version": "3ff45bb",
+      "last_run": "2026-08-09T22:00:11.279881",
+      "last_outcome": "dup_skip",
+      "version": "33ac0e3",
       "role_declared": "primary",
-      "note": "update_products+nightly OK",
+      "note": "commit-marker [run:26-08-09] con update real ya presente",
       "status": "ok",
       "duration_s": 9.37,
-      "last_pulled_iso": "2026-08-09T20:00:09.117033",
+      "last_pulled_iso": "2026-08-09T22:00:10.528649",
       "error": "el-industrial:supplier_down"
     },
     "raspberrypi5": {
