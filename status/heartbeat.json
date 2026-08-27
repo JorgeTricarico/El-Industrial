@@ -1,46 +1,12 @@
 {
   "nodes": {
-    "DESKTOP-MI43BOU": {
-      "last_run": "2026-07-07T21:00:01.418271",
-      "last_outcome": "dup_skip",
-      "version": "18639b2",
-      "role_declared": "backup",
-      "note": "commit-marker [run:26-07-07] con update real ya presente",
-      "last_pulled_iso": "2026-07-07T21:00:01.293476",
-      "status": "supplier_down",
-      "duration_s": 106.44,
-      "error": "el-industrial:supplier_down"
-    },
-    "raspberrypi": {
-      "last_run": "2026-08-27T20:00:09.614018",
-      "last_outcome": "dup_skip",
-      "version": "3d7dc53",
-      "role_declared": "primary",
-      "note": "commit-marker [run:26-08-27] con update real ya presente",
-      "status": "ok",
-      "duration_s": 5.53,
-      "last_pulled_iso": "2026-08-27T20:00:08.901093",
-      "error": "el-industrial:supplier_down"
-    },
     "raspberrypi5": {
-      "last_run": "2026-08-25T20:15:06.760212",
+      "version": "48d4cea",
+      "last_pulled_iso": "2026-08-27T20:15:11.577759",
+      "last_run": "2026-08-27T20:15:11.776792",
       "last_outcome": "dup_skip",
-      "version": "829827f",
       "role_declared": "backup",
-      "note": "commit-marker [run:26-08-25] con update real ya presente",
-      "last_pulled_iso": "2026-08-25T20:15:06.581140"
-    }
-  },
-  "last_telegram_iso": "2026-08-27T10:00:59.186353",
-  "last_telegram_provider": "gemini",
-  "tenants": {
-    "demo-electricidad": {
-      "last_telegram_iso": "2026-06-07T14:07:53.868000",
-      "last_telegram_provider": "gemini"
-    },
-    "el-industrial": {
-      "last_telegram_iso": "2026-08-27T10:00:59.186353",
-      "last_telegram_provider": "gemini"
+      "note": "commit-marker [run:26-08-27] con update real ya presente"
     }
   }
 }
