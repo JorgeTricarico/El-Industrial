@@ -10,22 +10,8 @@ import tempfile
 import time
 from pathlib import Path
 from datetime import datetime, timedelta
-import importlib
 
 import pytest
-import sys
-
-class DummyYaml:
-    @staticmethod
-    def safe_load(f):
-        content = f.read()
-        if "ghost-node" in content:
-            return {"nodes": [{"hostname": "ghost-node", "role": "primary", "state": "active"}]}
-        elif "paused-node" in content:
-            return {"nodes": [{"hostname": "paused-node", "state": "paused"}]}
-        else:
-            return {"nodes": []}
-sys.modules['yaml'] = DummyYaml
 
 import system_audit
 
