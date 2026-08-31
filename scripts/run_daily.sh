@@ -43,6 +43,18 @@ cd "$PROJECT_ROOT" || exit
 # causando que el pulse pull_fail nunca se ejecutara (variable vacia).
 PULSE_PY="$SCRIPT_DIR/node_pulse.py"
 
+# No iniciar un fetch/pull si el filesystem está casi lleno. Un pull puede
+# descargar objetos y fallar a mitad de camino con ENOSPC, dejando al nodo
+# viejo y además impidiendo escribir el heartbeat/incidente. El umbral es
+# configurable por nodo; 256 MiB alcanza para el fetch normal del repo.
+MIN_FREE_KB="${GIT_PULL_MIN_FREE_KB:-262144}"
+AVAILABLE_KB=$(df -Pk "$PROJECT_ROOT" 2>/dev/null | awk 'NR==2 {print $4}')
+if [[ "$AVAILABLE_KB" =~ ^[0-9]+$ ]] && [ "$AVAILABLE_KB" -lt "$MIN_FREE_KB" ]; then
+    log_message "CRITICO: espacio insuficiente antes del pull (${AVAILABLE_KB}KB libres; minimo ${MIN_FREE_KB}KB). Abortando."
+    python3 "$PULSE_PY" --outcome "disk_low" --note "espacio insuficiente antes de git pull: ${AVAILABLE_KB}KB" >>"$LOG_FILE" 2>&1 || true
+    exit 2
+fi
+
 
 # Hacemos pull --rebase --autostash antes que cualquier otra logica para que
 # todos los nodos arranquen con el mismo arbol que main en GitHub.
@@ -341,4 +353,3 @@ fi
 
 log_message "Proceso finalizado correctamente."
 exit 0
-

@@ -17,8 +17,8 @@
 
 ## Última actualización
 
-- **Fecha:** 2026-07-01
-- **Agente:** Claude Opus 4.8 (sesión de Jorge)
+- **Fecha:** 2026-08-31
+- **Agente:** Codex (sesión de Jorge)
 - **Commit head al cierre:** ver git log
 - **Tests:** 235 ✅ (coverage 58.7%, piso CI 58%; update_products 85%, auto_fix 69%)
 - **Producción:** verde — Pi corrió 01/07 10:00 AR (`outcome=updated`). Data del 01/07 en repo.
@@ -101,6 +101,7 @@
 - **2026-07-01** Crontab de DESKTOP-MI43BOU: `0 0` → `0 21 * * 1-6` (drift de TZ: se computó para UTC y el reloj de WSL pasó a AR). Ahora corre después del run de las 20:00 de la Pi → `dup_skip`, sin ruido nocturno.
 - **2026-07-01** `run_daily.sh` + `node_pulse.effective_role`: el rol operativo ahora se resuelve desde `infra/nodes.yml` (via `--resolve-role`), con override env y fallback legacy. Antes cualquier host que no dijera "mint" se auto-elegía `primary` — DESKTOP-MI43BOU (backup) se creía primary y pegaba a Bertual de madrugada. `supplier_down` (exit 3) ahora loguea `AVISO` en vez de `CRITICO` (era ruido sobre condición esperada/manejada).
 - **2026-07-01** `run_daily.sh:53` bug latente: el `git pull ... | tee` enmascaraba el exit de git (el `if` veía el exit de `tee`=0). Un pull fallido seguía con código stale en vez de abortar (exit 2) — la protección anti-data-vieja del bug 19-may estaba rota. Fix: redirigir al log sin pipe. Test `test_pull_fail_aborts_with_exit_2` vuelve a verde.
+- **2026-08-31** Diagnóstico `raspberrypi5`: el pull del 26/08 falló por `No space left on device`; el cron del nodo volvió a funcionar el 27–29. `run_daily.sh` y `run_frequent.sh` ahora verifican espacio antes del pull, y `run_frequent.sh` aborta ante cualquier pull fallido en lugar de ejecutar código stale. `healthcheck` reconoce `disk_low`.
 - **2026-05-23** `healthcheck.detect_public_site_stale`: skip tenants testing + edad medida desde `file_date+20h` en vez de medianoche. Elimina falso positivo diario donde el runner de GH Actions (2-3h tarde) reportaba "deploy no llegando" aunque el deploy era reciente.
 - **2026-05-21** Pi crontab: agregado `0 10 * * 1-6` (10:00 AR Lun-Sab). Cierra gap G5: cliente abre temprano y ve precios del día. Antes solo corría 20:00 + 22:00 AR.
 - **2026-05-20** `3f85890` Plan B (Bertual desde runner) fail-fast 30s — probado que no funciona, IPs GH bloqueadas.
@@ -117,6 +118,7 @@
 - `post_deploy_check.py` salta freshness check si `state == "testing"`. Si cambiás el state machine, revisar.
 - `nightly_report.process_tenant_report` permite supersede solo si `last_telegram_provider.startswith("filler_")`. Si renombrás los providers filler (ej. `filler_supplier_down` → `no_supplier`), el supersede deja de disparar.
 - `run_daily.sh` pull principal (línea ~53) NO debe volver a usar `| tee`: enmascara el exit de git y rompe el abort en pull-fail (vuelve el bug de data vieja). Si necesitás ver el output en vivo, agregá `set -o pipefail` con cuidado (hay otros pipes con `grep` que saldrían 1 sin match).
+- Los nodos requieren espacio libre suficiente para que Git pueda desempaquetar objetos. `GIT_PULL_MIN_FREE_KB` permite ajustar el umbral; no bajar el umbral sin revisar el tamaño del repo y la SD.
 - Rol operativo del nodo lo decide `node_pulse.effective_role` desde `nodes.yml`. Si sumás un nodo y no lo registrás ahí, cae al fallback legacy (no-"mint" ⇒ primary) y podría pushear duplicado. Registralo en `nodes.yml`.
 - `auto_fix.py` es un ARMA CARGADA (agente autónomo que pushea a prod si pytest pasa). Guardrails que NO se tocan: gate de pytest lo corre el WRAPPER (no el agente), clon con origin local (el agente no llega a GitHub), opt-in por `.env`, cooldown. Su seguridad depende de la fuerza de los tests (P14).
 - CI (`test_pipeline.yml`) DEBE correr la suite completa con `--cov-fail-under`. Si alguien lo vuelve a acotar a 2 archivos, se pierde la red (los tests dejan de enforcearse en cada push, incluido el push del auto_fix). El piso de coverage solo debe SUBIR, nunca bajar.

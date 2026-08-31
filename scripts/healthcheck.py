@@ -33,7 +33,7 @@ SUSTAINED_FAIL_STATES = ("api_fail", "supplier_down")
 # que hace dup_skip (deferido al primary) NO esta en esta lista: es sano.
 NODE_FAILURE_OUTCOMES = frozenset({
     "supplier_down", "supplier_fail", "api_fail",
-    "partial_fail", "nightly_fail", "pull_fail", "push_fail", "no_tenants",
+    "partial_fail", "nightly_fail", "pull_fail", "disk_low", "push_fail", "no_tenants",
 })
 
 HOST = socket.gethostname()

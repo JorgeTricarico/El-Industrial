@@ -10,6 +10,7 @@ VENV_PATH="$PROJECT_ROOT/venv"
 LOG_FILE="$PROJECT_ROOT/reports/cron_frequent_log.txt"
 LOCK_FILE="/tmp/el_industrial.lock"
 HOSTNAME=$(hostname)
+PULSE_PY="$SCRIPT_DIR/node_pulse.py"
 
 # Función para loggear con timestamp
 log_message() {
@@ -31,6 +32,16 @@ fi
 
 cd "$PROJECT_ROOT" || exit
 
+# Evitar un fetch/pull parcial por falta de espacio. El valor se puede ajustar
+# por nodo si el filesystem es pequeño.
+MIN_FREE_KB="${GIT_PULL_MIN_FREE_KB:-262144}"
+AVAILABLE_KB=$(df -Pk "$PROJECT_ROOT" 2>/dev/null | awk 'NR==2 {print $4}')
+if [[ "$AVAILABLE_KB" =~ ^[0-9]+$ ]] && [ "$AVAILABLE_KB" -lt "$MIN_FREE_KB" ]; then
+    log_message "CRITICO: espacio insuficiente antes del pull (${AVAILABLE_KB}KB libres; minimo ${MIN_FREE_KB}KB). Abortando."
+    python3 "$PULSE_PY" --outcome "disk_low" --note "espacio insuficiente antes de git pull: ${AVAILABLE_KB}KB" >>"$LOG_FILE" 2>&1 || true
+    exit 2
+fi
+
 # --- Auto-pull: siempre ejecutar la ultima version ---
 # Mismo self-heal que run_daily: si hay .gz untracked bloqueando, los limpia y reintenta.
 if ! git pull --rebase --autostash origin main --quiet 2>>"$LOG_FILE"; then
@@ -42,9 +53,13 @@ if ! git pull --rebase --autostash origin main --quiet 2>>"$LOG_FILE"; then
             [ -f "$PROJECT_ROOT/$f" ] && rm -f "$PROJECT_ROOT/$f" && log_message "SELFHEAL frequent: rm $f"
         done <<< "$BLOCKING"
         git pull --rebase --autostash origin main --quiet >>"$LOG_FILE" 2>&1 || \
-            log_message "ADVERTENCIA: git pull fallo incluso tras cleanup en frequent."
+            { log_message "CRITICO: git pull fallo incluso tras cleanup en frequent."; \
+              python3 "$PULSE_PY" --outcome "pull_fail" --note "pull fallo incluso tras cleanup" >>"$LOG_FILE" 2>&1 || true; \
+              exit 2; }
     else
-        log_message "ADVERTENCIA: git pull fallo en frequent (no es .gz). Continuando con codigo local."
+        log_message "CRITICO: git pull fallo en frequent (no es .gz). Abortando para no ejecutar codigo local desactualizado."
+        python3 "$PULSE_PY" --outcome "pull_fail" --note "git pull fallo en frequent: $PULL_ERR" >>"$LOG_FILE" 2>&1 || true
+        exit 2
     fi
 fi
 

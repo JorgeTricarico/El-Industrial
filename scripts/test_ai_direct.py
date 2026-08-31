@@ -31,14 +31,15 @@ sample_changes = {
     'new': [{'code': 'LA05', 'detalle': 'Llana acero', 'new': '450'}]
 }
 
-print('Llamando a Gemini 2.0 Flash Lite...')
+model_for_display = resolve_latest_model('gemini', 'gemini-3.1-flash-lite')
+print(f'Llamando a Gemini {model_for_display}...')
 summary = get_ai_summary(sample_changes)
 print('Resumen:', summary)
 
 # Sanitizar a formato HTML de Telegram
 summary_safe = sanitize_html(summary)
 
-cap = f'🚀 TEST IA (2.0 Flash Lite)\n\n{summary_safe}'
+cap = f'🚀 TEST IA ({model_for_display})\n\n{summary_safe}'
 url_tg = f'https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage'
 requests.post(url_tg, data={'chat_id': TELEGRAM_CHAT_ID, 'text': cap, 'parse_mode': 'HTML'})
 print('Mensaje enviado a Telegram.')
