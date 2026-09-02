@@ -1,12 +1,12 @@
 {
   "nodes": {
     "raspberrypi5": {
-      "version": "ed1fb35",
-      "last_pulled_iso": "2026-09-01T20:15:09.132852",
-      "last_run": "2026-09-01T20:15:09.367315",
+      "version": "80e6b4f",
+      "last_pulled_iso": "2026-09-02T20:15:07.153250",
+      "last_run": "2026-09-02T20:15:07.359223",
       "last_outcome": "dup_skip",
       "role_declared": "backup",
-      "note": "commit-marker [run:26-09-01] con update real ya presente"
+      "note": "commit-marker [run:26-09-02] con update real ya presente"
     },
     "raspberrypi": {
       "version": "0db8f30",
