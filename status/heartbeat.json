@@ -9,21 +9,21 @@
       "note": "commit-marker [run:26-09-02] con update real ya presente"
     },
     "raspberrypi": {
-      "version": "adef0d0",
-      "last_pulled_iso": "2026-09-02T22:00:10.706446",
-      "last_run": "2026-09-02T22:00:11.457294",
-      "last_outcome": "dup_skip",
+      "version": "e312f71",
+      "last_pulled_iso": "2026-09-03T10:00:10.666086",
+      "last_run": "2026-09-03T10:00:57.514468",
+      "last_outcome": "updated",
       "role_declared": "primary",
-      "note": "commit-marker [run:26-09-02] con update real ya presente",
+      "note": "update_products+nightly OK",
       "status": "ok",
-      "duration_s": 5.15
+      "duration_s": 5.17
     }
   },
-  "last_telegram_iso": "2026-09-02T10:00:53.435257",
+  "last_telegram_iso": "2026-09-03T10:00:55.568585",
   "last_telegram_provider": "gemini",
   "tenants": {
     "el-industrial": {
-      "last_telegram_iso": "2026-09-02T10:00:53.435257",
+      "last_telegram_iso": "2026-09-03T10:00:55.568585",
       "last_telegram_provider": "gemini"
     }
   }
