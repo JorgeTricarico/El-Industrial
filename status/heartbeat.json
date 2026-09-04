@@ -17,6 +17,14 @@
       "note": "commit-marker [run:26-09-03] con update real ya presente",
       "status": "ok",
       "duration_s": 5.17
+    },
+    "DESKTOP-MI43BOU": {
+      "version": "8635957",
+      "last_pulled_iso": "2026-09-03T21:00:02.701921",
+      "last_run": "2026-09-03T21:00:02.914393",
+      "last_outcome": "dup_skip",
+      "role_declared": "backup",
+      "note": "commit-marker [run:26-09-03] con update real ya presente"
     }
   },
   "last_telegram_iso": "2026-09-03T10:00:55.568585",
