@@ -9,12 +9,12 @@
       "note": "commit-marker [run:26-09-03] con update real ya presente"
     },
     "raspberrypi": {
-      "version": "ff093a6",
-      "last_pulled_iso": "2026-09-04T10:00:10.909090",
-      "last_run": "2026-09-04T10:00:55.908626",
-      "last_outcome": "updated",
+      "version": "329ee15",
+      "last_pulled_iso": "2026-09-04T20:00:09.534315",
+      "last_run": "2026-09-04T20:00:10.258470",
+      "last_outcome": "dup_skip",
       "role_declared": "primary",
-      "note": "update_products+nightly OK",
+      "note": "commit-marker [run:26-09-04] con update real ya presente",
       "status": "ok",
       "duration_s": 5.19
     },
