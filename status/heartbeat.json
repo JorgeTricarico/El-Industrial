@@ -9,14 +9,14 @@
       "note": "commit-marker [run:26-09-04] con update real ya presente"
     },
     "raspberrypi": {
-      "version": "ef933c2",
-      "last_pulled_iso": "2026-09-04T22:00:10.018253",
-      "last_run": "2026-09-04T22:00:10.776478",
-      "last_outcome": "dup_skip",
+      "version": "00e44a9",
+      "last_pulled_iso": "2026-09-05T10:00:10.589786",
+      "last_run": "2026-09-05T10:01:11.554676",
+      "last_outcome": "updated",
       "role_declared": "primary",
-      "note": "commit-marker [run:26-09-04] con update real ya presente",
+      "note": "update_products+nightly OK",
       "status": "ok",
-      "duration_s": 5.19
+      "duration_s": 15.2
     },
     "DESKTOP-MI43BOU": {
       "version": "8635957",
@@ -27,11 +27,11 @@
       "note": "commit-marker [run:26-09-03] con update real ya presente"
     }
   },
-  "last_telegram_iso": "2026-09-04T10:00:53.760106",
+  "last_telegram_iso": "2026-09-05T10:01:09.518590",
   "last_telegram_provider": "gemini",
   "tenants": {
     "el-industrial": {
-      "last_telegram_iso": "2026-09-04T10:00:53.760106",
+      "last_telegram_iso": "2026-09-05T10:01:09.518590",
       "last_telegram_provider": "gemini"
     }
   }
