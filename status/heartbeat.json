@@ -9,14 +9,14 @@
       "note": "commit-marker [run:26-09-07] con update real ya presente"
     },
     "raspberrypi": {
-      "version": "599975d",
-      "last_pulled_iso": "2026-09-08T10:00:12.620850",
-      "last_run": "2026-09-08T10:00:14.365464",
+      "version": "e11d9c4",
+      "last_pulled_iso": "2026-09-08T20:00:09.794081",
+      "last_run": "2026-09-08T20:00:11.280950",
       "last_outcome": "supplier_fail",
       "role_declared": "unknown",
       "note": "update_products exit=1",
       "status": "no_tenants",
-      "duration_s": 0.2
+      "duration_s": 0.07
     },
     "DESKTOP-MI43BOU": {
       "version": "8635957",
