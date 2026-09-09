@@ -1,14 +1,14 @@
 {
   "nodes": {
     "raspberrypi5": {
-      "version": "ca592ce",
-      "last_pulled_iso": "2026-09-08T20:15:05.368573",
-      "last_run": "2026-09-08T20:15:36.113422",
+      "version": "a87807f",
+      "last_pulled_iso": "2026-09-09T20:15:07.227995",
+      "last_run": "2026-09-09T20:17:40.664072",
       "last_outcome": "updated",
       "role_declared": "backup",
       "note": "update_products+nightly OK",
       "status": "ok",
-      "duration_s": 5.1
+      "duration_s": 2.43
     },
     "raspberrypi": {
       "version": "635858c",
@@ -29,11 +29,11 @@
       "note": "commit-marker [run:26-09-03] con update real ya presente"
     }
   },
-  "last_telegram_iso": "2026-09-08T20:15:35.073811",
+  "last_telegram_iso": "2026-09-09T20:17:29.653691",
   "last_telegram_provider": "gemini",
   "tenants": {
     "el-industrial": {
-      "last_telegram_iso": "2026-09-08T20:15:35.073811",
+      "last_telegram_iso": "2026-09-09T20:17:29.653691",
       "last_telegram_provider": "gemini"
     }
   }
