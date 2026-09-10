@@ -1,14 +1,14 @@
 {
   "nodes": {
     "raspberrypi5": {
-      "version": "a87807f",
-      "last_pulled_iso": "2026-09-09T20:15:07.227995",
-      "last_run": "2026-09-09T20:17:40.664072",
+      "version": "2056ecf",
+      "last_pulled_iso": "2026-09-10T20:15:08.559471",
+      "last_run": "2026-09-10T20:17:22.114490",
       "last_outcome": "updated",
       "role_declared": "backup",
       "note": "update_products+nightly OK",
       "status": "ok",
-      "duration_s": 2.43
+      "duration_s": 12.6
     },
     "raspberrypi": {
       "version": "4911e16",
@@ -31,11 +31,11 @@
       "duration_s": 5.11
     }
   },
-  "last_telegram_iso": "2026-09-09T20:17:29.653691",
+  "last_telegram_iso": "2026-09-10T20:17:01.037061",
   "last_telegram_provider": "gemini",
   "tenants": {
     "el-industrial": {
-      "last_telegram_iso": "2026-09-09T20:17:29.653691",
+      "last_telegram_iso": "2026-09-10T20:17:01.037061",
       "last_telegram_provider": "gemini"
     }
   }
