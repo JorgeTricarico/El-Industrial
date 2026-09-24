@@ -11,14 +11,14 @@
       "duration_s": 4.37
     },
     "raspberrypi": {
-      "version": "f2667f4",
-      "last_pulled_iso": "2026-09-24T10:00:11.846977",
-      "last_run": "2026-09-24T10:00:13.287434",
+      "version": "55b762c",
+      "last_pulled_iso": "2026-09-24T20:00:09.416294",
+      "last_run": "2026-09-24T20:00:10.807492",
       "last_outcome": "supplier_fail",
       "role_declared": "unknown",
       "note": "update_products exit=1",
       "status": "no_tenants",
-      "duration_s": 0.07
+      "duration_s": 0.11
     },
     "DESKTOP-MI43BOU": {
       "version": "ec30102",
