@@ -213,14 +213,23 @@ fi
 
 # --- Ejecución del Script de Python ---
 log_message "Activando entorno virtual y ejecutando update_products.py..."
+PYTHON_BIN="python3"
 if [ -d "$VENV_PATH" ]; then
     source "$VENV_PATH/bin/activate"
+    if [ -x "$VENV_PATH/bin/python3" ]; then
+        PYTHON_BIN="$VENV_PATH/bin/python3"
+    fi
+    if ! "$PYTHON_BIN" -c "import yaml, requests, dotenv" >/dev/null 2>&1; then
+        log_message "CRITICO: Entorno Python incompleto o corrupto ($PYTHON_BIN no puede importar yaml/requests/dotenv)."
+        python3 "$PULSE_PY" --outcome "venv_fail" --note "dependencias python rotas ($PYTHON_BIN)" >>"$LOG_FILE" 2>&1 || true
+        exit 1
+    fi
 fi
 
 # Capturar stderr por separado para que tracebacks no se pierdan.
 # Sin esto, si Python crashea con ImportError/etc, el log no muestra nada util.
 UPDATE_STDERR_FILE=$(mktemp)
-python3 "$SCRIPT_DIR/update_products.py" 2>"$UPDATE_STDERR_FILE"
+"$PYTHON_BIN" "$SCRIPT_DIR/update_products.py" 2>"$UPDATE_STDERR_FILE"
 PY_EXIT_CODE=$?
 if [ -s "$UPDATE_STDERR_FILE" ]; then
     log_message "--- update_products stderr ---"

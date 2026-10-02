@@ -124,15 +124,22 @@ def fetch_with_retries(supplier, creds):
 
 def load_registry():
     if not os.path.exists(REGISTRY):
+        print(f"[update_products] _registry.yml no existe en {REGISTRY}", file=sys.stderr)
         return []
     try:
         import yaml
-    except ImportError:
+    except ImportError as e:
+        print(f"[update_products] CRITICO: pyyaml no instalado: {e}", file=sys.stderr)
         return []
     try:
         with open(REGISTRY, "r", encoding="utf-8") as f:
-            return (yaml.safe_load(f) or {}).get("tenants", [])
-    except (OSError, Exception):
+            data = yaml.safe_load(f)
+            if not isinstance(data, dict):
+                print("[update_products] CRITICO: _registry.yml no es un dict valido", file=sys.stderr)
+                return []
+            return data.get("tenants", [])
+    except Exception as e:
+        print(f"[update_products] CRITICO: Error parseando _registry.yml: {e}", file=sys.stderr)
         return []
 
 

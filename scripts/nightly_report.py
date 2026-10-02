@@ -555,12 +555,17 @@ def load_registry():
         return []
     try:
         import yaml
-    except ImportError:
+    except ImportError as e:
+        print(f"[nightly_report] pyyaml no instalado: {e}", file=sys.stderr)
         return []
     try:
         with open(REGISTRY, "r", encoding="utf-8") as f:
-            return (yaml.safe_load(f) or {}).get("tenants", [])
-    except (OSError, Exception):
+            data = yaml.safe_load(f)
+            if not isinstance(data, dict):
+                return []
+            return data.get("tenants", [])
+    except (OSError, Exception) as e:
+        print(f"[nightly_report] Error cargando _registry.yml: {e}", file=sys.stderr)
         return []
 
 
