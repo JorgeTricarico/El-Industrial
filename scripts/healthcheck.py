@@ -121,10 +121,15 @@ def detect_version_drift(heartbeat):
         return []
     try:
         remote_dt = datetime.fromisoformat(remote_commit_iso)
-        # Convertir a naive local time para comparar con los ISO del heartbeat
-        # que estan en TZ local sin offset.
+        # Convertir a naive local time de Buenos Aires para comparar con los ISO
+        # del heartbeat (los nodos corren forzados con TZ='America/Argentina/Buenos_Aires').
         if remote_dt.tzinfo is not None:
-            remote_dt = remote_dt.astimezone().replace(tzinfo=None)
+            try:
+                import zoneinfo
+                ar_tz = zoneinfo.ZoneInfo("America/Argentina/Buenos_Aires")
+                remote_dt = remote_dt.astimezone(ar_tz).replace(tzinfo=None)
+            except Exception:
+                remote_dt = remote_dt.astimezone().replace(tzinfo=None)
     except (ValueError, TypeError):
         remote_dt = None
 
