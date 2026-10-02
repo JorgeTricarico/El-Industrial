@@ -1,14 +1,14 @@
 {
   "nodes": {
     "raspberrypi5": {
-      "version": "d7f50df",
-      "last_pulled_iso": "2026-10-01T20:15:20.768750",
-      "last_run": "2026-10-01T20:17:12.705739",
+      "version": "cea1a26",
+      "last_pulled_iso": "2026-10-02T15:30:20.893542",
+      "last_run": "2026-10-02T15:31:25.454710",
       "last_outcome": "updated",
-      "role_declared": "backup",
+      "role_declared": "primary",
       "note": "update_products+nightly OK",
       "status": "ok",
-      "duration_s": 3.27
+      "duration_s": 4.46
     },
     "DESKTOP-MI43BOU": {
       "version": "ec30102",
@@ -21,11 +21,11 @@
       "duration_s": 5.11
     }
   },
-  "last_telegram_iso": "2026-10-01T20:17:04.065389",
+  "last_telegram_iso": "2026-10-02T15:31:19.353957",
   "last_telegram_provider": "gemini",
   "tenants": {
     "el-industrial": {
-      "last_telegram_iso": "2026-10-01T20:17:04.065389",
+      "last_telegram_iso": "2026-10-02T15:31:19.353957",
       "last_telegram_provider": "gemini"
     }
   }
