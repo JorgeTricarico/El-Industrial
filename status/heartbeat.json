@@ -1,9 +1,9 @@
 {
   "nodes": {
     "raspberrypi5": {
-      "version": "876d70a",
-      "last_pulled_iso": "2026-10-12T20:00:06.810701",
-      "last_run": "2026-10-12T20:00:07.035907",
+      "version": "2b6925d",
+      "last_pulled_iso": "2026-10-12T22:00:07.101879",
+      "last_run": "2026-10-12T22:00:07.355620",
       "last_outcome": "dup_skip",
       "role_declared": "primary",
       "note": "commit-marker [run:26-10-12] con update real ya presente",
