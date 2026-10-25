@@ -1,14 +1,14 @@
 {
   "nodes": {
     "raspberrypi5": {
-      "version": "427ddd1",
-      "last_pulled_iso": "2026-10-24T22:00:03.241811",
-      "last_run": "2026-10-24T22:00:03.375859",
-      "last_outcome": "dup_skip",
+      "version": "b3e7ce5",
+      "last_pulled_iso": "2026-10-25T20:00:16.431225",
+      "last_run": "2026-10-25T20:02:04.405796",
+      "last_outcome": "updated",
       "role_declared": "primary",
-      "note": "commit-marker [run:26-10-24] con update real ya presente",
+      "note": "update_products+nightly OK",
       "status": "ok",
-      "duration_s": 4.58
+      "duration_s": 2.46
     },
     "DESKTOP-MI43BOU": {
       "version": "ec30102",
