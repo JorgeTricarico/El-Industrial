@@ -20,6 +20,12 @@
       "note": "update_products+nightly OK",
       "status": "ok",
       "duration_s": 5.11
+    },
+    "runnervm48cm3": {
+      "last_run": "2026-11-03T06:10:02.074829",
+      "status": "ok",
+      "duration_s": 5.39,
+      "version": "2ecb500"
     }
   },
   "last_telegram_iso": "2026-10-31T10:02:22.136925",
