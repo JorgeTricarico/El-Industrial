@@ -12,12 +12,12 @@
       "error": "el-industrial:supplier_down"
     },
     "DESKTOP-MI43BOU": {
-      "version": "ec30102",
-      "last_pulled_iso": "2026-09-09T21:00:06.793028",
-      "last_run": "2026-09-09T21:00:32.052779",
-      "last_outcome": "updated",
+      "version": "ca06220",
+      "last_pulled_iso": "2026-11-07T23:00:03.047802",
+      "last_run": "2026-11-07T23:00:03.147512",
+      "last_outcome": "dup_skip",
       "role_declared": "backup",
-      "note": "update_products+nightly OK",
+      "note": "commit-marker [run:26-11-07] con update real ya presente",
       "status": "ok",
       "duration_s": 5.11
     },
