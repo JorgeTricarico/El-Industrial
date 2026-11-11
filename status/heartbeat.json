@@ -19,6 +19,17 @@
       "note": "commit-marker [run:26-11-10] con update real ya presente",
       "status": "ok",
       "duration_s": 5.11
+    },
+    "iQual-Mint": {
+      "last_run": "2026-11-11T00:50:59.310181",
+      "last_outcome": "dup_skip",
+      "version": "f05aba4",
+      "role_declared": "backup",
+      "note": "iQual-Mint backup sincronizado",
+      "last_pulled_iso": "2026-11-11T00:47:28.686213",
+      "status": "supplier_down",
+      "duration_s": 107.19,
+      "error": "el-industrial:supplier_down"
     }
   },
   "last_telegram_iso": "2026-11-07T10:01:23.327005",
