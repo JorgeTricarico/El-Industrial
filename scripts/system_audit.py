@@ -499,6 +499,12 @@ def send_alert(body):
 
 
 def main():
+    sys.path.insert(0, SCRIPT_DIR)
+    try:
+        from dotenv import load_dotenv
+        load_dotenv(ENV_PATH)
+    except ImportError:
+        pass
     sections, total = run_audit()
     body = format_report(sections, total)
     print(body)
