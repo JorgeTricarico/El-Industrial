@@ -63,16 +63,16 @@ nodes:
       Note vieja como nodo dedicado. Idealmente prendida 24/7 con bateria
       y red wifi de la casa.
 
-  - hostname: linux-mint
+  - hostname: iQual-Mint
     role: backup
-    cron: "30 20 * * 1-6"          # 20:30 AR
-    location: "Laptop secundaria"
+    cron: "30 20 * * 1-6"          # 20:30 AR (+30m del primary)
+    location: "Tailscale 100.115.152.45 (Servidor Mint/Nextcloud)"
     can_fetch_supplier: true
     can_push_github: true
-    state: paused_offline
+    state: active
     notes: |
-      Estaba corriendo, se quedo fuera de red hace dias. Cuando vuelva,
-      bumpear a active.
+      Nodo backup secundario (iQual-Mint). Always-on con cron 20:30 AR (+30m del primary).
+      Verifica data del día, redundancia ante caída de la Pi 5.
 
   - hostname: github-actions
     role: cloud_last_resort
