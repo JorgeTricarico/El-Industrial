@@ -19,8 +19,8 @@
 
 - **Fecha:** 2026-11-11
 - **Agente:** Antigravity (sesión de Jorge)
-- **Commit head al cierre:** cdc9830
-- **Tests:** 56/56 suite crítica ✅ (test_post_deploy_check, test_node_pulse, test_system_audit, test_heartbeat_io)
+- **Commit head al cierre:** 868beaf
+- **Tests:** 96/96 suite completa ✅ (post_deploy_check, healthcheck, system_audit, node_pulse, alert_throttle, heartbeat_io)
 - **Producción:** verde — Pi 5 corrió 10/11 10:00 AR (`outcome=updated`), deploy Netlify 6af3156cf0f210e44312516f OK. Post-deploy check en Pi 5 verde.
 
 ---
@@ -30,10 +30,10 @@
 | hostname           | rol                | online    | last_run AR        | last_telegram_iso       | notas |
 |--------------------|--------------------|-----------|--------------------|-------------------------|-------|
 | raspberrypi5       | primary            | ✅ vía TS | 2026-11-10 22:00  | 2026-11-07 (real send)  | Nodo primario oficial (64-bit aarch64). Cron `0 10,20,22 * * 1-6`. Fetchea Bertual, deploya Netlify y pushea git. |
+| iQual-Mint         | backup             | ✅ vía TS | 2026-11-11 00:50  | —                       | Nodo backup secundario always-on (cron 20:30 AR). Clón limpio en SSD, .env sincronizado, pulso probado. |
 | DESKTOP-MI43BOU    | backup             | ✅ WSL    | 2026-11-10 23:00  | —                       | WSL en HP EliteBook (i7elite). Cron `0 21 * * 1-6`. Activo y probado (dup_skip OK). |
 | raspberrypi        | retired            | ✅ vía TS | 2026-10-02 20:00  | —                       | Retirado formalmente en oct-2026 (hardware 32-bit 1GB RAM). Crons comentados. |
 | rv420              | backup             | ✅ vía TS | nunca             | —                       | `pending_onboard`. Sin repo clonado todavía (notebook de dibujos/familia). |
-| linux-mint / iQual-Mint | backup        | ⚠️        | obsoleto mayo-26  | —                       | Máquina online (Nextcloud/Engram), pero crontab corriendo clon viejo de mayo 2026 en `/home/jorge/iqualmint-os`. Requiere desactivar cron o actualizar repo. |
 | github-actions     | cloud_last_resort  | ✅        | 2026-11-03 06:10  | —                       | Solo filler. Normalizado en `node_pulse.py` para evitar hostnames efímeros huérfanos. |
 
 **Cómo refrescar esta tabla:** `cat status/heartbeat.json | jq '.nodes'` + `tailscale status`.
@@ -93,7 +93,12 @@
 
 > Solo cambios que afectan operación. Detalles en git log.
 
-- **2026-11-11** `cdc9830` Fix falso positivo ConnectionError post-deploy: `post_deploy_check.py` añade reintentos con backoff (3 intentos) en `check_html_smoke` tolerando propagación Edge de Netlify. `node_pulse.py` usa `github-actions` como hostname bajo CI evitando runners efímeros huérfanos (`runnervm*`). `cloud_update_resort.yml` actualiza fallback SSH a Pi 5 (`100.66.50.66`). `nodes.yml` actualiza `DESKTOP-MI43BOU` a `state: active`.
+- **2026-11-11** `868beaf` Eliminación integral de falsos positivos y hardening de alertas:
+  * Dead-man switch (`healthcheck.py`): alineado con la política de `quiet_skip` de `nightly_report` (hasta 7 días sin Telegram si no hay cambios de precio y los nodos corren a diario; solo escala de inmediato si el cluster entero está caído).
+  * Rate-limiting en `post_deploy_check.py`: integrado con `alert_throttle` (ventana 30m) para evitar alertas duplicadas repetitivas.
+  * Anti-alucinación en diagnóstico SRE (`ai_diagnose.py`): prompt refinado con reglas estrictas para no confundir caídas de proveedor con latencias o 404/ConnectionError de Netlify Edge.
+  * Optimización de suite de pruebas: tests de post-deploy acelerados 100x (de 45s a 0.4s). Suite completa 96/96 verde.
+- **2026-11-11** `f05aba4` / `7af5f22` Onboarding y saneamiento de nodo `iQual-Mint` como backup secundario activo (cron 20:30 AR).
 - **2026-07-01** Nodo nuevo `raspberrypi5` (backup, 20:15 AR) onboardeado vía Tailscale. Deploy key propia read-write (id 156106959, título "raspberrypi5-node"). `.env` copiado del primary. auto_fix (break-glass) desplegado en el WSL vía cron `0 13,20` (self-gated) — corre solo cuando la PC está prendida; agy no está en los Pi (aarch64). **Pendiente user**: `AUTO_FIX_ENABLED=1` en el `.env` del WSL para prenderlo (hoy queda no-op por gate).
 - **2026-07-01** `healthcheck.diagnose()` falso positivo: alertaba por CUALQUIER nodo con `status != ok`, aunque fuera viejo. Un backup con `supplier_down` viejo (o que ahora dup_skipea, dejando `status` viejo porque dup_skip no corre update_products) alertaba perpetuamente. Fix: usar `last_outcome` (signal fresco) + solo si la corrida es RECIENTE (≤26h). Cubre el falso positivo real que llegó por Telegram el 01/07.
 - **2026-07-01** CI `test_pipeline.yml`: ahora corre la **suite COMPLETA** (`pytest tests/`) con piso de coverage `--cov-fail-under=58`. Antes solo corría 2 archivos (`test_nightly_report` + `test_healthcheck`) → el resto de los tests nunca se ejercitaban en CI. `pytest-cov` sumado a requirements.
