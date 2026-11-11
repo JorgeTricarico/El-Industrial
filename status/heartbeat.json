@@ -26,10 +26,8 @@
       "version": "f05aba4",
       "role_declared": "backup",
       "note": "iQual-Mint backup sincronizado",
-      "last_pulled_iso": "2026-11-11T00:47:28.686213",
-      "status": "supplier_down",
-      "duration_s": 107.19,
-      "error": "el-industrial:supplier_down"
+      "status": "ok",
+      "duration_s": 2.15
     }
   },
   "last_telegram_iso": "2026-11-07T10:01:23.327005",
