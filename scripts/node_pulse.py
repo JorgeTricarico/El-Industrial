@@ -92,7 +92,10 @@ def main(argv=None):
                         help="Imprime el rol operativo (primary|backup) y sale, sin tocar heartbeat.")
     args = parser.parse_args(argv)
 
-    hostname = socket.gethostname()
+    if os.environ.get("GITHUB_ACTIONS") == "true":
+        hostname = "github-actions"
+    else:
+        hostname = socket.gethostname()
 
     if args.resolve_role:
         print(effective_role(hostname, os.environ.get("EL_INDUSTRIAL_ROLE")))

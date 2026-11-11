@@ -47,10 +47,10 @@ nodes:
     location: "WSL Jorge personal"
     can_fetch_supplier: true
     can_push_github: true
-    state: pending_onboard         # bumpear a active cuando configures cron
+    state: active
     notes: |
-      Backup desde WSL personal. Activo solo cuando la PC esta prendida.
-      Util para desarrollo + redundancia ocasional.
+      Backup desde WSL personal (HP EliteBook i7elite). Activo cuando la PC esta prendida.
+      Redundancia operativa probada (dup_skip y pulso verificado).
 
   - hostname: rv420
     role: backup

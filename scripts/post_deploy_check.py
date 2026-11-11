@@ -296,6 +296,21 @@ def check_tenant(tenant):
     return (slug, problems)
 
 
+def _fetch_smoke_url(url, timeout=10, retries=3):
+    """GET con reintentos para tolerar latencia de propagación de Netlify Edge."""
+    import time
+    delay = 0 if os.getenv("PYTEST_CURRENT_TEST") else float(os.getenv("HTML_SMOKE_RETRY_DELAY", "5"))
+    last_exc = None
+    for attempt in range(retries):
+        try:
+            return requests.get(url, timeout=timeout)
+        except Exception as e:
+            last_exc = e
+            if attempt < retries - 1 and delay > 0:
+                time.sleep(delay)
+    raise last_exc
+
+
 def check_html_smoke(tenant, url):
     """Fetch del index.html publico y verifica estructura minima.
     Atrapa: HTML corrupto, build incompleto, archivos JS faltantes.
@@ -303,7 +318,7 @@ def check_html_smoke(tenant, url):
     problems = []
     slug = tenant.get("slug")
     try:
-        res = requests.get(url, timeout=10)
+        res = _fetch_smoke_url(url, timeout=10)
     except Exception as e:
         return [f"{slug}: index.html no responde ({type(e).__name__})."]
     if not res.ok:
@@ -322,7 +337,7 @@ def check_html_smoke(tenant, url):
 
     # Verifica que js/main.js carga sin 404
     try:
-        res = requests.get(url.rstrip("/") + "/js/main.js", timeout=10)
+        res = _fetch_smoke_url(url.rstrip("/") + "/js/main.js", timeout=10)
         if not res.ok:
             problems.append(f"{slug}: js/main.js HTTP {res.status_code}. Front no funciona.")
     except Exception as e:
@@ -330,7 +345,7 @@ def check_html_smoke(tenant, url):
 
     # Verifica branding.json sirve JSON valido
     try:
-        res = requests.get(url.rstrip("/") + "/config/branding.json", timeout=10)
+        res = _fetch_smoke_url(url.rstrip("/") + "/config/branding.json", timeout=10)
         if not res.ok:
             problems.append(f"{slug}: config/branding.json HTTP {res.status_code}.")
         else:

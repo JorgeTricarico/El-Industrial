@@ -99,7 +99,7 @@ jobs:
         if: steps.check.outputs.real_update_today == '0' && steps.ts.outcome == 'success'
         continue-on-error: true
         env:
-          PI_HOST: ${{ vars.PI_HOST || '100.112.235.98' }}
+          PI_HOST: ${{ vars.PI_HOST || '100.66.50.66' }}
           PI_USER: ${{ vars.PI_USER || 'jorge' }}
           PI_REPO_PATH: ${{ vars.PI_REPO_PATH || '/home/jorge/El-Industrial' }}
         run: |
