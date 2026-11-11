@@ -204,11 +204,18 @@ def diagnose():
                         f"Nodo {name}: ultima corrida fallo (outcome='{outcome}', hace {age:.1f}h)."
                     )
 
-        # Dead-man-switch: telegram global (cualquier nodo lo manda)
+        # Dead-man-switch: telegram global (cualquier nodo lo manda).
+        # Si los nodos del cluster estan corriendo (cluster_alive), la falta de
+        # Telegram comercial a clientes es NORMAL cuando no hay cambios de precio
+        # (nightly_report hace quiet_skip por diseno hasta 7 dias para no spamear).
+        # Solo escalamos si pasaron > 7 dias (donde weekly_deadman debio forzar envio)
+        # o si el cluster entero esta caido (> THRESHOLD_HOURS).
         tg_iso = hb.get("last_telegram_iso")
         if tg_iso:
             tg_age = hours_since(tg_iso)
-            if tg_age is not None and tg_age > _expected_stale_hours():
+            cluster_alive = bool(ages and min(a[1] for a in ages) <= THRESHOLD_HOURS)
+            max_allowed_age = (7 * 24) if cluster_alive else _expected_stale_hours()
+            if tg_age is not None and tg_age > max_allowed_age:
                 problems.append(
                     f"Telegram no se envio hace {tg_age:.1f}h "
                     f"(ultimo proveedor: {hb.get('last_telegram_provider', '?')})."

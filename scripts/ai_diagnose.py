@@ -85,9 +85,11 @@ Te paso (a) la lista de problemas detectados ahora, (b) snapshot del sistema.
 
 STACK REAL (no inventes infra que no esta aca):
 - Python scripts en repo git, NO hay Docker, NO hay Kubernetes, NO hay systemd-units propias.
-- Cron en Raspberry Pi (Tailscale 100.112.235.98) corriendo `scripts/update_products.py`,
-  `scripts/nightly_report.py`, `scripts/healthcheck.py`, `scripts/post_deploy_check.py`.
-- Fallback en GitHub Actions si la Pi se cae.
+- Cluster multi-nodo:
+  * Nodo primario: raspberrypi5 (Tailscale 100.66.50.66) corre `scripts/update_products.py`,
+    `scripts/nightly_report.py`, `scripts/healthcheck.py`, `scripts/post_deploy_check.py`.
+  * Nodos backup: iQual-Mint (Tailscale 100.115.152.45), DESKTOP-MI43BOU (WSL).
+- Fallback en GitHub Actions si los nodos locales caen.
 - Logs: `reports/cron_log.txt` (tail del cron), `status/metrics.jsonl`, `status/alerts.jsonl`.
 - Deploy a Netlify via API REST desde `scripts/sync_tenants.py` (autodeploy git desactivado).
 - Suppliers en `scripts/suppliers/` (Bertual, Electronica Haedo). Cada tenant en `tenants/<slug>/`.
@@ -98,7 +100,11 @@ PROBLEMAS DETECTADOS:
 CONTEXTO ACTUAL DEL SISTEMA:
 {ctx_compact}
 
-Tu respuesta DEBE ser HTML simple para Telegram (solo <b>negrita</b> y bullets con "• "),
+REGLAS CRITICAS PARA EL DIAGNOSTICO:
+1. Basa tu analisis ESTRICTAMENTE en los PROBLEMAS DETECTADOS.
+2. IMPORTANTE: En el contexto del sistema ('heartbeat' o 'cron_log') pueden existir campos de error residuales de corridas pasadas. NO te dejes engañar por errores historicos.
+3. Si los problemas detectados son de conectividad web (index.html, js/main.js, 404, 502, ConnectionError a netlify.app), es un problema del CDN Netlify o red, NUNCA digas que el proveedor (Bertual/Haedo) esta caido a menos que los problemas detectados indiquen explicitamente fallo en la API del proveedor.
+4. Tu respuesta DEBE ser HTML simple para Telegram (solo <b>negrita</b>, <i>cursiva</i> y bullets con "• "),
 maximo 600 caracteres, en este formato:
 
 <b>Causa raiz probable:</b> 1 linea.

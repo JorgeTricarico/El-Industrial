@@ -442,3 +442,73 @@ def test_expected_stale_hours_martes_threshold_normal():
     """Martes cualquier hora: threshold 26h."""
     import datetime as _dt
     assert healthcheck._expected_stale_hours(_dt.datetime(2026, 5, 19, 9, 0)) == healthcheck.THRESHOLD_HOURS
+
+
+# ============ DEAD-MAN SWITCH CON QUIET-SKIP ============
+
+def test_deadman_no_alerta_si_cluster_vivo_dentro_de_7_dias(tmp_path, monkeypatch):
+    """Si los nodos corren todos los dias pero no hubo cambios de precio,
+    quiet_skip no manda Telegram comercial por hasta 7 dias. No debe alertar."""
+    now = datetime.now()
+    recent = now.isoformat()
+    three_days_ago = (now - timedelta(days=3)).isoformat()
+    status_dir = tmp_path / "status"
+    status_dir.mkdir(exist_ok=True)
+    payload = {
+        "nodes": {
+            "raspberrypi5": {"last_run": recent, "last_outcome": "dup_skip", "status": "ok"}
+        },
+        "last_telegram_iso": three_days_ago,
+        "last_telegram_provider": "gemini"
+    }
+    (status_dir / "heartbeat.json").write_text(json.dumps(payload))
+    monkeypatch.setattr(healthcheck, "STATUS_DIR", str(status_dir))
+    monkeypatch.setattr(healthcheck, "detect_public_site_stale", lambda: [])
+    status, problems = healthcheck.diagnose()
+    assert status == "ok", f"quiet-skip con cluster vivo no debe alertar: {problems}"
+
+
+def test_deadman_alerta_si_cluster_vivo_pero_pasan_mas_de_7_dias(tmp_path, monkeypatch):
+    """A los 7 dias de quietud, weekly_deadman debio forzar un envio al cliente.
+    Si pasaron > 7 dias, SI debe alertar."""
+    now = datetime.now()
+    recent = now.isoformat()
+    eight_days_ago = (now - timedelta(days=8)).isoformat()
+    status_dir = tmp_path / "status"
+    status_dir.mkdir(exist_ok=True)
+    payload = {
+        "nodes": {
+            "raspberrypi5": {"last_run": recent, "last_outcome": "dup_skip", "status": "ok"}
+        },
+        "last_telegram_iso": eight_days_ago,
+        "last_telegram_provider": "gemini"
+    }
+    (status_dir / "heartbeat.json").write_text(json.dumps(payload))
+    monkeypatch.setattr(healthcheck, "STATUS_DIR", str(status_dir))
+    monkeypatch.setattr(healthcheck, "detect_public_site_stale", lambda: [])
+    status, problems = healthcheck.diagnose()
+    assert status == "alert"
+    assert any("Telegram no se envio" in p for p in problems)
+
+
+def test_deadman_alerta_si_cluster_caido_y_telegram_vencido(tmp_path, monkeypatch):
+    """Si el cluster entero esta caido (last_run > 26h), debe alertar inmediatamente
+    a las 26h sin esperar a los 7 dias."""
+    now = datetime.now()
+    old_run = (now - timedelta(hours=30)).isoformat()
+    old_tg = (now - timedelta(hours=30)).isoformat()
+    status_dir = tmp_path / "status"
+    status_dir.mkdir(exist_ok=True)
+    payload = {
+        "nodes": {
+            "raspberrypi5": {"last_run": old_run, "last_outcome": "dup_skip", "status": "ok"}
+        },
+        "last_telegram_iso": old_tg,
+        "last_telegram_provider": "gemini"
+    }
+    (status_dir / "heartbeat.json").write_text(json.dumps(payload))
+    monkeypatch.setattr(healthcheck, "STATUS_DIR", str(status_dir))
+    monkeypatch.setattr(healthcheck, "detect_public_site_stale", lambda: [])
+    status, problems = healthcheck.diagnose()
+    assert status == "alert"
+    assert any("Telegram no se envio" in p for p in problems)

@@ -80,7 +80,9 @@ def fetch_public(url, path, timeout=15):
         except Exception as e:
             if attempt == 3:
                 return (False, 0, f"network_error: {type(e).__name__}: {e}")
-            time.sleep(15)
+            delay = 0 if os.getenv("PYTEST_CURRENT_TEST") else 15
+            if delay > 0:
+                time.sleep(delay)
 
 
 def normalize(items):
@@ -390,6 +392,19 @@ def send_alert(all_problems):
     """Manda alerta Telegram al admin via la cadena existente y registra a log."""
     if not all_problems:
         return False
+    # Rate-limit via alert_throttle (evita spam si corre varias veces seguidas)
+    try:
+        sys.path.insert(0, SCRIPT_DIR)
+        import alert_throttle
+        status_dir = os.path.join(BASE_DIR, "status")
+        send_ok, reason = alert_throttle.should_send(all_problems, status_dir=status_dir)
+        if not send_ok:
+            print(f"[post_deploy] Alerta throttled ({reason}). No se envia a Telegram.")
+            _log_alert(all_problems, [], 0, f"(alerta silenciada por rate-limit: {reason})")
+            return False
+    except Exception as e:
+        print(f"[post_deploy] alert_throttle error: {e}", file=sys.stderr)
+
     try:
         sys.path.insert(0, SCRIPT_DIR)
         import clients as _c
