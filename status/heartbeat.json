@@ -1,14 +1,14 @@
 {
   "nodes": {
     "raspberrypi5": {
-      "version": "56e47e3",
-      "last_pulled_iso": "2026-11-11T22:00:10.257882",
-      "last_run": "2026-11-11T22:00:10.433147",
-      "last_outcome": "dup_skip",
+      "version": "610f644",
+      "last_pulled_iso": "2026-11-12T10:00:10.970027",
+      "last_run": "2026-11-12T10:01:28.865736",
+      "last_outcome": "updated",
       "role_declared": "primary",
-      "note": "commit-marker [run:26-11-11] con update real ya presente",
+      "note": "update_products+nightly OK",
       "status": "ok",
-      "duration_s": 6.4
+      "duration_s": 6.56
     },
     "DESKTOP-MI43BOU": {
       "version": "8250c8f",
@@ -31,11 +31,11 @@
       "last_pulled_iso": "2026-11-11T20:30:03.843674"
     }
   },
-  "last_telegram_iso": "2026-11-11T10:01:56.413699",
+  "last_telegram_iso": "2026-11-12T10:01:25.617435",
   "last_telegram_provider": "gemini",
   "tenants": {
     "el-industrial": {
-      "last_telegram_iso": "2026-11-11T10:01:56.413699",
+      "last_telegram_iso": "2026-11-12T10:01:25.617435",
       "last_telegram_provider": "gemini"
     },
     "demo-electricidad": {
