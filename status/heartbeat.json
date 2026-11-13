@@ -11,12 +11,12 @@
       "duration_s": 6.56
     },
     "DESKTOP-MI43BOU": {
-      "version": "8250c8f",
-      "last_pulled_iso": "2026-11-11T23:00:03.811924",
-      "last_run": "2026-11-11T23:00:03.986376",
+      "version": "be70743",
+      "last_pulled_iso": "2026-11-12T23:00:02.922482",
+      "last_run": "2026-11-12T23:00:03.081307",
       "last_outcome": "dup_skip",
       "role_declared": "backup",
-      "note": "commit-marker [run:26-11-11] con update real ya presente",
+      "note": "commit-marker [run:26-11-12] con update real ya presente",
       "status": "ok",
       "duration_s": 5.11
     },
