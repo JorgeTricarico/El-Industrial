@@ -21,14 +21,14 @@
       "duration_s": 5.11
     },
     "iQual-Mint": {
-      "last_run": "2026-11-12T20:30:04.010730",
+      "last_run": "2026-11-13T20:30:04.929697",
       "last_outcome": "dup_skip",
-      "version": "96ce797",
+      "version": "6548d31",
       "role_declared": "backup",
-      "note": "commit-marker [run:26-11-12] con update real ya presente",
+      "note": "commit-marker [run:26-11-13] con update real ya presente",
       "status": "ok",
       "duration_s": 2.15,
-      "last_pulled_iso": "2026-11-12T20:30:03.818199"
+      "last_pulled_iso": "2026-11-13T20:30:04.736134"
     }
   },
   "last_telegram_iso": "2026-11-13T10:01:58.810293",
