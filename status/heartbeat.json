@@ -1,12 +1,12 @@
 {
   "nodes": {
     "raspberrypi5": {
-      "version": "d1a5d86",
-      "last_pulled_iso": "2026-11-13T10:00:06.322116",
-      "last_run": "2026-11-13T10:02:09.171116",
-      "last_outcome": "updated",
+      "version": "a55027b",
+      "last_pulled_iso": "2026-11-13T20:00:13.125518",
+      "last_run": "2026-11-13T20:00:13.267272",
+      "last_outcome": "dup_skip",
       "role_declared": "primary",
-      "note": "update_products+nightly OK",
+      "note": "commit-marker [run:26-11-13] con update real ya presente",
       "status": "ok",
       "duration_s": 11.43
     },
