@@ -29,6 +29,12 @@
       "status": "ok",
       "duration_s": 2.15,
       "last_pulled_iso": "2026-11-23T20:30:04.030393"
+    },
+    "runnervm0hi8g": {
+      "last_run": "2026-11-24T09:08:54.279137",
+      "status": "ok",
+      "duration_s": 5.52,
+      "version": "f6557a4"
     }
   },
   "last_telegram_iso": "2026-11-21T10:02:07.407739",
